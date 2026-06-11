@@ -29,8 +29,8 @@ Depth-GIC/GIV-D 데모는 기존 `.gic` / `.giv` 코덱을 대체하는 기능�
 | 데이터셋 | 처리 방식 |
 |---|---|
 | DIODE | validation archive만 사용하고 10개 샘플만 보존 |
-| NYU Depth V2 | 기존 로컬 폴더에서 10개만 추출, huge TFDS 자동 다운로드 금지 |
-| ManiSkill | full RLDS/TFDS 다운로드 금지, 설치되어 있지 않으면 procedural fallback 생성 |
+| NYU Depth V2 | 공식 web sample montage crop 또는 기존 로컬 폴더에서 10개만 추출, huge TFDS 자동 다운로드 금지 |
+| ManiSkill | full RLDS/TFDS 다운로드 금지, 공식 RGB+Depth texture 예시를 lightweight replay sample로 사용 |
 | RLBench | prebuilt 대형 dataset 다운로드 금지, 설치되어 있지 않으면 fallback 또는 missing metadata 처리 |
 
 ## 데이터 준비 명령어
@@ -50,10 +50,10 @@ python scripts/data_prep/prepare_nyu_samples.py --source /path/to/nyu --num_samp
 실제 NYU subset이 없지만 Streamlit 발표 흐름을 바로 확인해야 하는 경우:
 
 ```bash
-python scripts/data_prep/prepare_nyu_samples.py --fallback --num_samples 10
+python scripts/data_prep/prepare_nyu_samples.py --official_web_samples --num_samples 10
 ```
 
-이 fallback은 실제 NYU 데이터가 아니므로 정량 실험 결과로 사용하면 안 된다. 발표 데모에서는 `metadata.json`의 `source: "procedural_fallback"`를 명시하고, 최종 자료에는 가능하면 실제 NYU/DIODE 샘플로 교체한다.
+이 모드는 NYU Depth V2 공식 페이지의 sample montage에서 실제 실내 RGB와 colorized depth 예시를 crop한다. 단, depth는 원본 meter 단위 depth가 아니라 colorized visualization을 scalar map으로 변환한 것이므로 정량 depth 평가에는 사용하지 않는다.
 
 ManiSkill wrist RGB-D demo:
 
@@ -67,7 +67,7 @@ RLBench eye-in-hand RGB-D demo:
 python scripts/data_prep/prepare_rlbench_eye_in_hand_demo.py
 ```
 
-ManiSkill/RLBench가 설치되어 있지 않아도 robot demo script는 발표용 fallback sequence를 만들 수 있다. 이 경우 `metadata.json`에 `source: "procedural_fallback"`로 기록된다.
+ManiSkill script는 기본적으로 공식 ManiSkill RGB+Depth texture visualization을 다운로드해 짧은 replay sequence로 변환한다. 설치 없이도 메인 발표 데모가 단순 도형이 아니라 robot/tabletop RGB-D 예시로 동작한다. 강제 procedural fallback은 `--fallback` 옵션을 사용할 때만 생성한다.
 
 ## Depth-GIC Spatial Image Demo
 

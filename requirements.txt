@@ -1,6 +1,7 @@
 numpy
 pillow
 opencv-python
+imageio-ffmpeg
 scikit-image
 matplotlib
 pandas

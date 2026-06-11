@@ -43,6 +43,7 @@ outputs/
 *.mkv
 
 # Large datasets / downloaded archives
+data/raw_downloads/
 data/div2k/
 data/DAVIS-data.zip
 data/*.zip

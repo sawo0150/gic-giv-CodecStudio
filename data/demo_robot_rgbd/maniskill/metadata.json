@@ -1,6 +1,7 @@
 {
-  "source": "procedural_fallback",
+  "source": "maniskill_official_doc_rgbd_sample",
+  "source_url": "https://maniskill.readthedocs.io/en/latest/_images/rgbd_vis.png",
   "num_frames": 18,
   "camera": "wrist_like",
-  "note": "ManiSkill is not downloaded. This fallback approximates a wrist camera over a tabletop manipulation scene."
+  "note": "Cropped from the official ManiSkill RGB+Depth texture visualization. A short sequence is synthesized with small crop shifts for presentation replay."
 }

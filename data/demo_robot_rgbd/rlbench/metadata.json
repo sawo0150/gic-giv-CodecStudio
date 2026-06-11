@@ -1,6 +1,0 @@
-{
-  "source": "procedural_fallback",
-  "num_frames": 18,
-  "camera": "eye_in_hand_like",
-  "note": "RLBench/CoppeliaSim is not downloaded. This fallback approximates an eye-in-hand manipulation view."
-}

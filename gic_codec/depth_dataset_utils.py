@@ -78,6 +78,12 @@ def load_depth_pair(rgb_path, depth_path, mask_path=None, max_size=512):
 
     rgb = np.asarray(rgb_img).astype(np.float32) / 255.0
     depth = np.asarray(depth_img).astype(np.float32) / 255.0
+    if depth.shape[:2] != rgb.shape[:2]:
+        depth_img = Image.fromarray((np.clip(depth, 0.0, 1.0) * 255).astype(np.uint8)).resize(
+            (rgb.shape[1], rgb.shape[0]),
+            Image.Resampling.BILINEAR,
+        )
+        depth = np.asarray(depth_img).astype(np.float32) / 255.0
     depth_vis = (np.clip(depth, 0.0, 1.0) * 255).astype(np.uint8)
     return rgb.astype(np.float32), depth.astype(np.float32), depth_vis
 

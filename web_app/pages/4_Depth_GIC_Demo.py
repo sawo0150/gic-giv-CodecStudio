@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -124,7 +125,11 @@ def _download_button_for_file(label, path, file_name, mime):
 
 
 st.markdown("### Presentation-ready sample")
-dataset_label = st.selectbox("Dataset", ["DIODE", "NYU Depth V2"])
+diode_available = bool(list_demo_depth_samples("diode"))
+nyu_available = bool(list_demo_depth_samples("nyu"))
+dataset_options = ["DIODE", "NYU Depth V2"]
+default_dataset_idx = 0 if diode_available else 1
+dataset_label = st.selectbox("Dataset", dataset_options, index=default_dataset_idx)
 dataset_key = "diode" if dataset_label == "DIODE" else "nyu"
 samples = list_demo_depth_samples(dataset_key)
 
@@ -134,6 +139,12 @@ if not samples:
     else:
         st.warning("NYU samples are missing. Run `python scripts/data_prep/prepare_nyu_samples.py --source /path/to/nyu --num_samples 10` first.")
 else:
+    meta_path = PROJECT_DIR / "data" / "demo_depth" / ("diode_10" if dataset_key == "diode" else "nyu_10") / "metadata.json"
+    if meta_path.exists():
+        metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        st.caption(f"Source: `{metadata.get('source', 'unknown')}`")
+        if metadata.get("source") == "nyu_depth_v2_official_web_montage":
+            st.info("NYU sample is cropped from the official NYU Depth V2 web montage. Depth is an approximate scalar map converted from the colorized depth visualization.")
     sample_names = [f"{idx:02d} - {record['name']}" for idx, record in enumerate(samples)]
     sample_idx = st.selectbox("Sample", range(len(samples)), format_func=lambda idx: sample_names[idx])
     c1, c2, c3 = st.columns(3)
@@ -185,7 +196,7 @@ if presentation:
     m4.metric(".gicd Size", f"{Path(presentation['gicd_path']).stat().st_size / 1024:.1f} KB")
 
     if presentation.get("comparison_path") and Path(presentation["comparison_path"]).exists():
-        st.video(presentation["comparison_path"])
+        st.video(presentation["comparison_path"], format="video/mp4")
 
     d1, d2, d3 = st.columns(3)
     with d1:

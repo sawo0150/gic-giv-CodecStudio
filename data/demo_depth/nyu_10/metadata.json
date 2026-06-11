@@ -1,7 +1,8 @@
 {
-  "source": "procedural_fallback",
+  "source": "nyu_depth_v2_official_web_montage",
+  "source_url": "https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2_web.jpg",
   "num_samples": 10,
-  "note": "NYU-like indoor RGB-D fallback. Use real NYU samples when available for final quantitative claims.",
+  "note": "Cropped from the official NYU Depth V2 sample montage. Depth is a colorized visualization converted to an approximate scalar map for presentation-only rendering.",
   "samples": [
     {
       "name": "000",

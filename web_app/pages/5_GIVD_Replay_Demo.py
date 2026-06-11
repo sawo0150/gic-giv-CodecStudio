@@ -195,6 +195,10 @@ else:
     metadata = seq_meta.get("metadata", {})
     source = metadata.get("source", "unknown")
     st.caption(f"Found {len(seq_meta['frames'])} frames in `{seq_meta['root']}` | source: `{source}`")
+    if source == "procedural_fallback":
+        st.warning("This sequence is procedural fallback data and is not presentation-ready. Prefer the ManiSkill official-doc RGB-D sample or real generated robot RGB-D data.")
+    elif source == "maniskill_official_doc_rgbd_sample":
+        st.info("This sequence is derived from the official ManiSkill RGB+Depth texture visualization, with small crop shifts to create a short replay.")
     if st.button("Generate third-person GIV-D replay", type="primary"):
         try:
             rgbd_frames = load_robot_rgbd_sequence(dataset_key, max_frames=max_frames, max_size=max_size)
@@ -229,7 +233,7 @@ if presentation:
     m4.metric(".givd Size", f"{Path(presentation['givd_path']).stat().st_size / 1024:.1f} KB")
 
     if presentation.get("comparison_path") and Path(presentation["comparison_path"]).exists():
-        st.video(presentation["comparison_path"])
+        st.video(presentation["comparison_path"], format="video/mp4")
 
     d1, d2, d3 = st.columns(3)
     with d1:

@@ -41,11 +41,29 @@ def _save_video(frames, output_path, fps):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frames = [np.asarray(frame).astype(np.uint8) for frame in frames]
+    if not frames:
+        raise ValueError("No frames to save.")
+
+    even_frames = []
+    for frame in frames:
+        h, w = frame.shape[:2]
+        even_h = h - (h % 2)
+        even_w = w - (w % 2)
+        even_frames.append(frame[:even_h, :even_w])
+    frames = even_frames
 
     try:
         import imageio.v2 as imageio
 
-        imageio.mimsave(output_path, frames, fps=fps)
+        imageio.mimsave(
+            output_path,
+            frames,
+            fps=fps,
+            codec="libx264",
+            pixelformat="yuv420p",
+            macro_block_size=2,
+            ffmpeg_log_level="error",
+        )
         return str(output_path)
     except Exception:
         pass

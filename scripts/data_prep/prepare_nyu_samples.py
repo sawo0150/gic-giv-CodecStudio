@@ -1,6 +1,7 @@
 import argparse
 import json
 import shutil
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 OUT_DIR = PROJECT_DIR / "data" / "demo_depth" / "nyu_10"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
 DEPTH_EXTS = {".npy", ".png", ".tif", ".tiff"}
+OFFICIAL_SAMPLE_URL = "https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2_web.jpg"
 
 
 def find_pairs(source):
@@ -98,6 +100,63 @@ def make_fallback_samples(num_samples, width=384, height=288):
     print(f"Prepared {num_samples} NYU-like fallback samples in {OUT_DIR}")
 
 
+def _depth_from_nyu_colorized(depth_rgb):
+    arr = np.asarray(depth_rgb).astype(np.float32) / 255.0
+    score = 0.70 * arr[..., 0] + 0.35 * arr[..., 1] - 0.30 * arr[..., 2]
+    lo = float(np.percentile(score, 2))
+    hi = float(np.percentile(score, 98))
+    if hi <= lo:
+        return np.zeros(score.shape, dtype=np.float32)
+    return np.clip((score - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+
+
+def prepare_official_web_samples(num_samples):
+    (OUT_DIR / "rgb").mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / "depth").mkdir(parents=True, exist_ok=True)
+    raw_dir = PROJECT_DIR / "data" / "raw_downloads"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    montage_path = raw_dir / "nyu_depth_v2_web.jpg"
+    if not montage_path.exists():
+        print(f"Downloading official NYU Depth V2 sample montage: {OFFICIAL_SAMPLE_URL}")
+        urllib.request.urlretrieve(OFFICIAL_SAMPLE_URL, montage_path)
+
+    montage = Image.open(montage_path).convert("RGB")
+    width, height = montage.size
+    cols = [round(width * i / 6) for i in range(7)]
+    rows = [round(height * i / 5) for i in range(6)]
+    samples = []
+    for row in range(5):
+        samples.append((row, 0, 1))
+        samples.append((row, 3, 4))
+
+    metadata = {
+        "source": "nyu_depth_v2_official_web_montage",
+        "source_url": OFFICIAL_SAMPLE_URL,
+        "num_samples": min(int(num_samples), len(samples)),
+        "note": (
+            "Cropped from the official NYU Depth V2 sample montage. Depth is a colorized visualization "
+            "converted to an approximate scalar map for presentation-only rendering."
+        ),
+        "samples": [],
+    }
+
+    for idx, (row, rgb_col, depth_col) in enumerate(samples[: int(num_samples)]):
+        y0, y1 = rows[row], rows[row + 1]
+        rgb = montage.crop((cols[rgb_col], y0, cols[rgb_col + 1], y1))
+        depth_rgb = montage.crop((cols[depth_col], y0, cols[depth_col + 1], y1))
+        depth = _depth_from_nyu_colorized(depth_rgb)
+
+        name = f"{idx:03d}"
+        rgb_out = OUT_DIR / "rgb" / f"{name}_rgb.png"
+        depth_out = OUT_DIR / "depth" / f"{name}_depth.npy"
+        rgb.save(rgb_out)
+        np.save(depth_out, depth)
+        metadata["samples"].append({"name": name, "rgb": str(rgb_out), "depth": str(depth_out)})
+
+    (OUT_DIR / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    print(f"Prepared {len(metadata['samples'])} official NYU web samples in {OUT_DIR}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -108,7 +167,12 @@ def main():
     parser.add_argument("--source", help="Existing NYU sample folder with rgb/ and depth/ subfolders")
     parser.add_argument("--num_samples", type=int, default=10)
     parser.add_argument("--fallback", action="store_true", help="Create a small NYU-like procedural fallback sample set.")
+    parser.add_argument("--official_web_samples", action="store_true", help="Crop real RGB-D examples from the official NYU Depth V2 sample montage.")
     args = parser.parse_args()
+
+    if args.official_web_samples:
+        prepare_official_web_samples(args.num_samples)
+        return
 
     if args.fallback:
         make_fallback_samples(args.num_samples)
@@ -118,6 +182,7 @@ def main():
         print("No --source provided.")
         print("Expected layout: /path/to/nyu_subset/rgb/*.png and /path/to/nyu_subset/depth/*.npy or *.png")
         print("Example: python scripts/data_prep/prepare_nyu_samples.py --source /path/to/nyu_subset --num_samples 10")
+        print("For official real sample crops: python scripts/data_prep/prepare_nyu_samples.py --official_web_samples --num_samples 10")
         print("For presentation-only fallback: python scripts/data_prep/prepare_nyu_samples.py --fallback --num_samples 10")
         return
 
