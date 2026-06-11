@@ -172,6 +172,41 @@ Pages:
 - `Encoder`: upload image/MP4 or use a frame folder path, then export `.gic/.giv`
 - `Player`: upload `.gic/.giv`, inspect metadata, preview, and render frames
 - `Export Report`: generate PPT charts and image assets
+- `Depth-GIC Demo`: upload RGB-D input, export `.gicd`, and test viewpoint sliders
+- `GIV-D Replay Demo`: upload an RGB-D sequence, export `.givd`, and replay Gaussian frames
+
+## Depth-aware Demo
+
+The depth-aware demo is a proof-of-concept showing that GIC/GIV can be extended from compressed media containers into renderable Gaussian primitive containers.
+
+Depth-GIC:
+
+```bash
+python scripts/demo_depth_gic.py \
+  --rgb path/to/rgb.png \
+  --depth path/to/depth.png \
+  --output outputs/demo/sample.gicd \
+  --max_size 384 \
+  --stride 6
+```
+
+GIV-D:
+
+```bash
+python scripts/demo_depth_giv.py \
+  --rgb_dir path/to/rgb \
+  --depth_dir path/to/depth \
+  --output outputs/demo/sample.givd \
+  --max_frames 8 \
+  --max_size 320 \
+  --stride 8
+```
+
+Detailed explanation:
+
+```text
+docs/depth_gic_giv_demo.md
+```
 
 ## PPT Assets
 
