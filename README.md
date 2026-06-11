@@ -175,6 +175,8 @@ Pages:
 - `Depth-GIC Demo`: upload RGB-D input, export `.gicd`, and test viewpoint sliders
 - `GIV-D Replay Demo`: upload an RGB-D sequence, export `.givd`, and replay Gaussian frames
 
+Both depth demo pages include built-in synthetic samples, so they can be opened and demonstrated without preparing external RGB-D files.
+
 ## Depth-aware Demo
 
 The depth-aware demo is a proof-of-concept showing that GIC/GIV can be extended from compressed media containers into renderable Gaussian primitive containers.

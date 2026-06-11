@@ -48,59 +48,94 @@ def _save_upload(uploaded, suffix):
     return tmp.name
 
 
+def _make_builtin_rgbd(width=384, height=256):
+    x = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
+    y = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+
+    rgb = np.zeros((height, width, 3), dtype=np.float32)
+    rgb[..., 0] = 0.15 + 0.70 * x
+    rgb[..., 1] = 0.20 + 0.65 * y
+    rgb[..., 2] = 0.35 + 0.30 * (1.0 - x)
+
+    cx, cy = 0.48, 0.52
+    circle = ((x - cx) ** 2 + (y - cy) ** 2) < 0.12
+    rgb[circle] = np.array([0.95, 0.35, 0.18], dtype=np.float32)
+
+    box = (x > 0.62) & (x < 0.86) & (y > 0.20) & (y < 0.58)
+    rgb[box] = np.array([0.18, 0.72, 0.95], dtype=np.float32)
+
+    depth = 0.25 + 0.65 * x + 0.10 * y
+    depth = np.broadcast_to(depth, (height, width)).copy()
+    depth[circle] = 0.18
+    depth[box] = 0.38
+    depth = np.clip(depth, 0.0, 1.0).astype(np.float32)
+    return rgb, depth
+
+
+def _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, file_name):
+    start = time.time()
+    gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=edge_weight)
+    height, width = depth.shape
+    render = render_depth_gaussians(gaussians, height, width)
+    depth_vis = visualize_depth_colored_gaussians(gaussians, height, width)
+
+    header = {
+        "codec_name": "GIC-D",
+        "version": "1.0.0",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "image_info": {"width": int(width), "height": int(height), "channels": 3, "has_depth": True},
+        "encoding_settings": {
+            "max_size": int(max_size),
+            "stride": int(stride),
+            "edge_weight": bool(edge_weight),
+            "representation": "depth-aware-gaussian",
+        },
+        "gaussian_info": {"num_points": int(len(gaussians["xyz"]))},
+        "note": "Depth-aware Gaussian Image Container demo",
+    }
+    metrics = {
+        "num_points": int(len(gaussians["xyz"])),
+        "encoding_time_sec": float(time.time() - start),
+    }
+
+    buffer_path = tempfile.NamedTemporaryFile(delete=False, suffix=".gicd").name
+    save_depth_gic(buffer_path, header, gaussians, preview=render, metrics=metrics)
+    with open(buffer_path, "rb") as f:
+        gicd_bytes = f.read()
+    os.remove(buffer_path)
+
+    st.session_state.depth_gic_demo = {
+        "rgb": rgb,
+        "depth": depth,
+        "gaussians": gaussians,
+        "render": render,
+        "depth_vis": depth_vis,
+        "header": header,
+        "metrics": metrics,
+        "gicd_bytes": gicd_bytes,
+        "file_size": len(gicd_bytes),
+        "file_name": file_name,
+    }
+
+
 if "depth_gic_demo" not in st.session_state:
     st.session_state.depth_gic_demo = None
+
+demo_col1, demo_col2 = st.columns([1, 3])
+with demo_col1:
+    if st.button("Load built-in Depth-GIC demo"):
+        rgb, depth = _make_builtin_rgbd(width=max_size, height=max(128, int(max_size * 2 / 3)))
+        _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, "builtin_depth_demo.gicd")
+with demo_col2:
+    st.caption("파일이 없어도 바로 시연할 수 있는 synthetic RGB-D 샘플을 생성합니다.")
 
 if st.button("Encode RGB-D to Depth-GIC", disabled=rgb_file is None or depth_file is None):
     rgb_path = depth_path = None
     try:
         rgb_path = _save_upload(rgb_file, Path(rgb_file.name).suffix or ".png")
         depth_path = _save_upload(depth_file, Path(depth_file.name).suffix or ".png")
-
-        start = time.time()
         rgb, depth = load_rgb_depth(rgb_path, depth_path, max_size=max_size)
-        gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=edge_weight)
-        height, width = depth.shape
-        render = render_depth_gaussians(gaussians, height, width)
-        depth_vis = visualize_depth_colored_gaussians(gaussians, height, width)
-
-        header = {
-            "codec_name": "GIC-D",
-            "version": "1.0.0",
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "image_info": {"width": int(width), "height": int(height), "channels": 3, "has_depth": True},
-            "encoding_settings": {
-                "max_size": int(max_size),
-                "stride": int(stride),
-                "edge_weight": bool(edge_weight),
-                "representation": "depth-aware-gaussian",
-            },
-            "gaussian_info": {"num_points": int(len(gaussians["xyz"]))},
-            "note": "Depth-aware Gaussian Image Container demo",
-        }
-        metrics = {
-            "num_points": int(len(gaussians["xyz"])),
-            "encoding_time_sec": float(time.time() - start),
-        }
-
-        buffer_path = tempfile.NamedTemporaryFile(delete=False, suffix=".gicd").name
-        save_depth_gic(buffer_path, header, gaussians, preview=render, metrics=metrics)
-        with open(buffer_path, "rb") as f:
-            gicd_bytes = f.read()
-
-        st.session_state.depth_gic_demo = {
-            "rgb": rgb,
-            "depth": depth,
-            "gaussians": gaussians,
-            "render": render,
-            "depth_vis": depth_vis,
-            "header": header,
-            "metrics": metrics,
-            "gicd_bytes": gicd_bytes,
-            "file_size": len(gicd_bytes),
-            "file_name": f"{Path(rgb_file.name).stem}.gicd",
-        }
-        os.remove(buffer_path)
+        _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, f"{Path(rgb_file.name).stem}.gicd")
     except Exception as exc:
         st.error(f"Depth-GIC encoding failed: {exc}")
     finally:

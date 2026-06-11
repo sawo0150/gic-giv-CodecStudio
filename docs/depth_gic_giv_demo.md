@@ -23,6 +23,8 @@ The goal is not to prove better compression than JPEG/WebP or raw RGB-D. The goa
 
 The Streamlit page `4_Depth_GIC_Demo.py` accepts one RGB image and one depth image. It samples RGB-D pixels on a regular grid and creates one Gaussian-like primitive per sampled pixel.
 
+For presentation, the page also provides a built-in synthetic RGB-D sample. Press `Load built-in Depth-GIC demo` to generate a ready-to-view `.gicd` demo without uploading files.
+
 Each primitive stores:
 
 - `xyz`: normalized x/y position and normalized depth z
@@ -65,6 +67,8 @@ The Streamlit page `5_GIVD_Replay_Demo.py` accepts either:
 
 - multiple RGB frames and matching depth frames, paired by sorted filename, or
 - a zip file containing `rgb/` and `depth/` folders.
+
+For presentation, the page also provides a built-in synthetic first-person RGB-D sequence. Press `Load built-in GIV-D replay demo` to generate a ready-to-view `.givd` replay without uploading files.
 
 Each RGB-D frame is converted into depth-aware Gaussian primitives and saved in a `.givd` container:
 

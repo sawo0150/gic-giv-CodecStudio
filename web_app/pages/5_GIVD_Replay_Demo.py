@@ -75,8 +75,105 @@ def _load_pairs_from_zip(tmpdir):
     return list(zip(rgb_paths, depth_paths))[:max_frames]
 
 
+def _make_builtin_sequence(num_frames=8, width=320, height=220):
+    sequence = []
+    x = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
+    y = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+
+    for idx in range(num_frames):
+        t = idx / max(1, num_frames - 1)
+        rgb = np.zeros((height, width, 3), dtype=np.float32)
+        rgb[..., 0] = 0.10 + 0.65 * x
+        rgb[..., 1] = 0.18 + 0.55 * y
+        rgb[..., 2] = 0.42 + 0.20 * np.sin((x + t) * np.pi)
+
+        cx = 0.28 + 0.38 * t
+        cy = 0.52 + 0.08 * np.sin(t * np.pi * 2.0)
+        circle = ((x - cx) ** 2 + (y - cy) ** 2) < 0.055
+        rgb[circle] = np.array([0.95, 0.42, 0.12], dtype=np.float32)
+
+        box = (x > 0.62) & (x < 0.86) & (y > 0.22) & (y < 0.62)
+        rgb[box] = np.array([0.18, 0.70, 0.95], dtype=np.float32)
+
+        depth = 0.22 + 0.58 * x + 0.18 * y
+        depth = np.broadcast_to(depth, (height, width)).copy()
+        depth[circle] = 0.16 + 0.08 * t
+        depth[box] = 0.42
+        sequence.append((rgb.astype(np.float32), np.clip(depth, 0.0, 1.0).astype(np.float32)))
+
+    return sequence
+
+
+def _build_givd_demo(rgbd_sequence, max_size, stride):
+    frames = []
+    previews = {}
+    original_rgbs = []
+    depth_maps = []
+    start = time.time()
+
+    progress = st.progress(0)
+    status = st.empty()
+    for idx, (rgb, depth) in enumerate(rgbd_sequence, start=1):
+        gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=True)
+        h, w = depth.shape
+        preview = render_depth_gaussians(gaussians, h, w)
+
+        frames.append({"gaussians": gaussians, "width": w, "height": h})
+        previews[idx] = preview
+        original_rgbs.append(rgb)
+        depth_maps.append(depth)
+        progress.progress(idx / len(rgbd_sequence))
+        status.write(f"Encoded frame {idx}/{len(rgbd_sequence)} | Gaussians: `{len(gaussians['xyz']):,}`")
+
+    h, w = depth_maps[0].shape
+    header = {
+        "codec_name": "GIV-D",
+        "version": "1.0.0",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "video_info": {"width": int(w), "height": int(h), "total_frames": len(frames), "fps": 8.0},
+        "encoding_settings": {
+            "max_size": int(max_size),
+            "stride": int(stride),
+            "representation": "depth-aware-gaussian",
+        },
+        "note": "Depth-aware Gaussian Video Container demo",
+    }
+    metrics = {
+        "total_frames": len(frames),
+        "avg_points_per_frame": float(np.mean([len(f["gaussians"]["xyz"]) for f in frames])),
+        "encoding_time_sec": float(time.time() - start),
+    }
+
+    out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".givd").name
+    save_depth_giv(out_path, header, frames, previews=previews, metrics=metrics)
+    with open(out_path, "rb") as f:
+        givd_bytes = f.read()
+    os.remove(out_path)
+
+    st.session_state.givd_demo = {
+        "frames": frames,
+        "previews": previews,
+        "original_rgbs": original_rgbs,
+        "depth_maps": depth_maps,
+        "header": header,
+        "metrics": metrics,
+        "givd_bytes": givd_bytes,
+        "file_name": "builtin_sequence.givd",
+    }
+
+
 if "givd_demo" not in st.session_state:
     st.session_state.givd_demo = None
+
+demo_col1, demo_col2 = st.columns([1, 3])
+with demo_col1:
+    if st.button("Load built-in GIV-D replay demo"):
+        sample_width = int(max_size)
+        sample_height = max(128, int(max_size * 0.68))
+        sequence = _make_builtin_sequence(num_frames=max_frames, width=sample_width, height=sample_height)
+        _build_givd_demo(sequence, max_size=max_size, stride=stride)
+with demo_col2:
+    st.caption("파일 없이도 바로 재생 가능한 synthetic first-person RGB-D sequence를 생성합니다.")
 
 can_encode = zip_file is not None or (rgb_files and depth_files and len(rgb_files) == len(depth_files))
 if st.button("Encode sequence to GIV-D demo", disabled=not can_encode):
@@ -88,59 +185,11 @@ if st.button("Encode sequence to GIV-D demo", disabled=not can_encode):
                 st.warning("No RGB-D frame pairs found.")
                 st.stop()
 
-            frames = []
-            previews = {}
-            original_rgbs = []
-            depth_maps = []
-            start = time.time()
-
-            progress = st.progress(0)
-            status = st.empty()
+            rgbd_sequence = []
             for idx, (rgb_path, depth_path) in enumerate(pairs, start=1):
                 rgb, depth = load_rgb_depth(rgb_path, depth_path, max_size=max_size)
-                gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=True)
-                h, w = depth.shape
-                preview = render_depth_gaussians(gaussians, h, w)
-
-                frames.append({"gaussians": gaussians, "width": w, "height": h})
-                previews[idx] = preview
-                original_rgbs.append(rgb)
-                depth_maps.append(depth)
-                progress.progress(idx / len(pairs))
-                status.write(f"Encoded frame {idx}/{len(pairs)} | Gaussians: `{len(gaussians['xyz']):,}`")
-
-            h, w = depth_maps[0].shape
-            header = {
-                "codec_name": "GIV-D",
-                "version": "1.0.0",
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "video_info": {"width": int(w), "height": int(h), "total_frames": len(frames), "fps": 8.0},
-                "encoding_settings": {
-                    "max_size": int(max_size),
-                    "stride": int(stride),
-                    "representation": "depth-aware-gaussian",
-                },
-                "note": "Depth-aware Gaussian Video Container demo",
-            }
-            metrics = {
-                "total_frames": len(frames),
-                "avg_points_per_frame": float(np.mean([len(f["gaussians"]["xyz"]) for f in frames])),
-                "encoding_time_sec": float(time.time() - start),
-            }
-
-            out_path = tmpdir / "sequence.givd"
-            save_depth_giv(out_path, header, frames, previews=previews, metrics=metrics)
-            givd_bytes = out_path.read_bytes()
-
-            st.session_state.givd_demo = {
-                "frames": frames,
-                "previews": previews,
-                "original_rgbs": original_rgbs,
-                "depth_maps": depth_maps,
-                "header": header,
-                "metrics": metrics,
-                "givd_bytes": givd_bytes,
-            }
+                rgbd_sequence.append((rgb, depth))
+            _build_givd_demo(rgbd_sequence, max_size=max_size, stride=stride)
         except Exception as exc:
             st.error(f"GIV-D encoding failed: {exc}")
 
@@ -187,7 +236,7 @@ else:
     st.download_button(
         "Download .givd",
         data=demo["givd_bytes"],
-        file_name="sequence.givd",
+        file_name=demo.get("file_name", "sequence.givd"),
         mime="application/octet-stream",
     )
 
