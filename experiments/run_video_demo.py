@@ -10,7 +10,7 @@ sys.path.append(str(PROJECT_DIR))
 
 from gic_codec.encoder import GICEncoder
 
-def run_video_demo(video_dirs, output_dir, iterations=1000, max_frames=5):
+def run_video_demo(video_dirs, output_dir, iterations=1000, max_frames=5, video_init_mode="independent"):
     os.makedirs(output_dir, exist_ok=True)
     encoder = GICEncoder()
     
@@ -31,7 +31,8 @@ def run_video_demo(video_dirs, output_dir, iterations=1000, max_frames=5):
                     output_path=str(giv_file),
                     quality_mode=mode,
                     iterations=iterations,
-                    max_frames=max_frames
+                    max_frames=max_frames,
+                    video_init_mode=video_init_mode,
                 )
                 
                 results.append({
@@ -42,7 +43,10 @@ def run_video_demo(video_dirs, output_dir, iterations=1000, max_frames=5):
                     "Avg_BPP": metrics["avg_bpp"],
                     "Avg_PSNR": metrics["avg_psnr"],
                     "Avg_SSIM": metrics["avg_ssim"],
-                    "Total_Enc_Time": metrics["total_encoding_time_sec"]
+                    "Total_Enc_Time": metrics["total_encoding_time_sec"],
+                    "Avg_Enc_Time": metrics.get("avg_encoding_time_sec"),
+                    "Avg_Dec_Time": metrics.get("avg_decoding_time_sec"),
+                    "Video_Init_Mode": video_init_mode,
                 })
             except Exception as e:
                 print(f"Error evaluating GIV {mode} for video {video_name}: {e}")

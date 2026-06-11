@@ -23,7 +23,7 @@ sample.gic
 └── logs.json
 ```
 
-`.giv` is a frame-wise Gaussian video container:
+`.giv` is a Gaussian video container. It supports independent per-frame initialization and optional previous-frame warm start:
 
 ```text
 sample.giv
@@ -117,6 +117,18 @@ python -m gic_codec.encoder \
   --output outputs/giv/bear.giv
 ```
 
+Warm-start each frame from the previous optimized Gaussian state:
+
+```bash
+python -m gic_codec.encoder \
+  --input data/davis/bear \
+  --video \
+  --mode auto \
+  --max_frames 30 \
+  --video_init previous_frame \
+  --output outputs/giv/bear_prev_init.giv
+```
+
 MP4 to `.giv` with explicit FPS and visible progress:
 
 ```bash
@@ -128,6 +140,7 @@ PYTHONUNBUFFERED=1 conda run -n 3dgs python -m gic_codec.encoder \
   --iter 1000 \
   --max_frames 300 \
   --fps 30 \
+  --video_init previous_frame \
   --output outputs/giv/video_300.giv
 ```
 

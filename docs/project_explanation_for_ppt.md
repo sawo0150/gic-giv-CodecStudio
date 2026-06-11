@@ -300,13 +300,22 @@ NumPy fallback backend로 생성된 파일에는 추가로 `fallback_shape`가 �
 }
 ```
 
-### Frame-wise encoding 구조
+### Frame-wise encoding 및 previous-frame warm start 구조
 
-현재 `.giv`는 motion estimation이나 inter-frame residual compression을 사용하지 않는다. 각 프레임을 독립 이미지처럼 Gaussian fitting하고, 결과를 `frames/frame_xxxxxx.npz`로 저장한다.
+현재 `.giv`는 motion estimation이나 inter-frame residual compression을 사용하지 않는다. 각 프레임의 최종 Gaussian parameter는 `frames/frame_xxxxxx.npz`에 독립적으로 저장된다.
+
+다만 인코딩 초기화 방식은 두 가지를 지원한다.
+
+| `video_init_mode` | 설명 |
+|---|---|
+| `independent` | 매 프레임을 `init_method` 값에 따라 InitNet/quard/random으로 새로 초기화 |
+| `previous_frame` | 1번째 프레임은 `init_method`로 초기화하고, 2번째 프레임부터는 직전 프레임의 최적화된 Gaussian parameter를 초기값으로 사용 |
+
+`previous_frame` 모드에서는 `InstantGIWrapper.gaussians_to_init_points()`가 저장된 Gaussian state를 `GaussianImage_RS(init_points=...)` 형식으로 변환한다. Instant-GI 내부 raw parameter인 `xyz`와 `rotation`은 각각 `tanh`, `sigmoid`를 적용해 초기화 가능한 값으로 바꾼다.
 
 PPT 설명:
 
-> 첫 구현에서는 동영상 압축의 복잡도를 낮추기 위해 frame-wise independent encoding을 선택했다. 이는 구현 안정성이 높고 seek가 단순하지만, 프레임 간 중복을 제거하지 못한다는 한계가 있다.
+> `.giv`는 각 프레임의 Gaussian parameter를 독립 파일로 저장하되, 인코딩 시에는 이전 프레임의 최적화 결과를 warm-start로 재사용할 수 있다. 이 방식은 motion compensation은 아니지만, 연속 프레임 간 표현을 이어받는 초기 단계의 temporal reuse로 볼 수 있다.
 
 ### 향후 확장 가능성
 
@@ -347,9 +356,10 @@ PPT 설명:
 3. directory이면 png/jpg/jpeg 파일 정렬
 4. 각 프레임에 대해 complexity score 계산
 5. 각 프레임 quality mode 결정
-6. frame-wise Gaussian encoding
-7. frame별 preview 및 metrics 저장
-8. .giv container 생성
+6. `video_init_mode=previous_frame`이면 2번째 프레임부터 직전 Gaussian으로 warm-start
+7. frame-wise Gaussian encoding
+8. frame별 preview 및 metrics 저장
+9. .giv container 생성
 ```
 
 ### 입력 처리
@@ -483,7 +493,7 @@ C = 50.0 * edge_density
 
 이미지 인코딩에서는 전체 이미지 1장에 대해 score를 계산하고, `header.encoding_settings.quality_mode`와 `decided_mode`에 기록한다.
 
-동영상 인코딩에서는 각 프레임마다 score를 계산하고, `index.json`의 각 frame entry에 `quality_mode`, `num_points`, `psnr`, `ssim`을 저장한다. 현재 `index.json`에는 raw complexity score 자체는 저장하지 않는다.
+동영상 인코딩에서는 각 프레임마다 score를 계산하고, `index.json`의 각 frame entry에 `quality_mode`, `complexity_score`, `init_source`, `num_points`, `psnr`, `ssim`, `encoding_time_sec`, `decoding_time_sec`을 저장한다.
 
 ### PPT용 짧은 설명 문장
 
@@ -716,7 +726,7 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 5. 이미지 encoder 구현 | `GICEncoder.encode_image` | 품질 모드와 metrics 측정 순서 | 임시 저장 후 파일 크기 측정, metrics 포함 재저장 | 실제 파일 생성까지 완료 |
 | 6. 이미지 decoder/player 구현 | `GICDecoder.decode_image`, Streamlit Player | preview와 full decode 분리 | preview 먼저 표시, 버튼으로 render | 평가자에게 즉시 시연 가능 |
 | 7. Auto Quality Mode 구현 | edge/color/laplacian score | 복잡도 기준 설계 | threshold 기반 Low/Medium/High mapping | 입력 적응형 Gaussian 수 제어 |
-| 8. `.giv` 포맷 설계 | header/index/frames/previews 구조 | 동영상 inter-frame compression 복잡도 | frame-wise independent encoding | 확장 가능한 video container |
+| 8. `.giv` 포맷 설계 | header/index/frames/previews 구조 | 동영상 inter-frame compression 복잡도 | frame-wise 저장 + previous-frame warm start 옵션 | 확장 가능한 video container |
 | 9. 동영상 encoder 구현 | folder/MP4 입력 지원 | MP4 frame 추출과 frame별 metadata | OpenCV VideoCapture와 index.json | frame seek 가능한 구조 |
 | 10. `.giv` player 구현 | slider, thumbnail, play simulation | 큰 파일 로딩 비효율 | 현재는 전체 load, 향후 cache 개선 | Player 중심 도구 구현 |
 | 11. Streamlit 앱 통합 | 3-page app | Torch 환경 차이 | backend 상태 표시와 fallback 안내 | 로컬 데모 가능 |
@@ -733,6 +743,7 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 |---|---|
 | `.gic` zip container 저장/로드 | 완료 |
 | `.giv` frame-wise zip container 저장/로드 | 완료 |
+| `.giv` previous-frame warm start 인코딩 | 완료 |
 | 이미지 CLI encoder/decoder | 완료 |
 | 비디오/frame folder CLI encoder/decoder | 완료 |
 | Instant-GI backend wrapper | 완료 |
@@ -756,7 +767,7 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 
 - 현재 `.gic/.giv`는 zip+npz container이며, 실제 상용 codec 수준의 bitstream은 아니다.
 - Gaussian parameter quantization, entropy coding은 구현되어 있지 않다.
-- `.giv`는 frame-wise 방식이라 프레임 간 중복을 제거하지 못한다.
+- `.giv`는 저장 구조가 frame-wise라 프레임 간 중복을 파일 크기 차원에서 제거하지 못한다.
 - Player는 `.giv` frame을 매번 전체 로드하는 구조라 큰 파일에는 비효율적이다.
 - 일부 chart는 실제 CSV 기반이 아니라 mock/default data 기반이다.
 - 낮은 iteration 실험에서는 PSNR이 낮게 나온다.
@@ -784,14 +795,14 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 4 | Project Goal | `.gic`, `.giv`, Streamlit Studio | 산출물 목록 표 | “핵심 산출물은 파일 포맷, Python 패키지, 웹 GUI, PPT export pipeline입니다.” |
 | 5 | System Architecture | Analyzer→Encoder→Container→Player | 아키텍처 flow | “입력은 복잡도 분석을 거쳐 품질 모드가 결정되고, Gaussian parameter로 저장됩니다.” |
 | 6 | `.gic` Format | 이미지용 Gaussian container | `.gic` 내부 파일 표 | “`.gic`는 header, Gaussian npz, preview, metrics를 포함하는 zip container입니다.” |
-| 7 | `.giv` Format | frame-wise video container | `.giv` 구조 표 | “초기 버전은 각 프레임을 독립 Gaussian image로 저장합니다.” |
+| 7 | `.giv` Format | frame-wise video container with warm start | `.giv` 구조 표 | “각 프레임은 독립 Gaussian 파일로 저장되지만, 인코딩 초기값은 이전 프레임에서 이어받을 수 있습니다.” |
 | 8 | Encoder Implementation | 이미지/비디오 encoding 흐름 | Encoder flow block | “Encoder는 fitting 결과를 파일 크기와 품질 지표와 함께 저장합니다.” |
 | 9 | Player Implementation | metadata+preview+full decode | Player screenshot 또는 표 | “Player는 preview로 빠르게 확인하고, 버튼 또는 slider로 실제 Gaussian rendering을 수행합니다.” |
 | 10 | Auto Quality Mode | 복잡도 기반 품질 제어 | metric/threshold 표 | “edge, color variance, Laplacian variance를 결합해 자동으로 Gaussian 수를 결정합니다.” |
 | 11 | Streamlit Demo | 로컬 codec studio | 웹앱 화면 캡처 | “웹앱은 비교 대시보드가 아니라 실제 인코딩과 재생을 수행하는 도구입니다.” |
 | 12 | Experiment Setup | 데이터셋과 지표 | dataset/metric 표 | “평가는 file size, compression ratio, PSNR, SSIM, encode/decode time으로 정리했습니다.” |
 | 13 | Image Results | JPEG/WebP/GIC 비교 | image_results_table, `codec_grid_comparison.png` | “현재 낮은 iteration에서는 품질이 낮지만 컨테이너와 decode pipeline은 정상 작동합니다.” |
-| 14 | Video Results | GIV frame-wise 결과 | `video_frames_strip.png`, frame table | “동영상은 frame-wise 방식으로 구현되어 seek와 구현 안정성이 높습니다.” |
+| 14 | Video Results | GIV frame-wise 및 previous-frame warm start 결과 | `video_frames_strip.png`, frame table | “Player는 frame-wise 저장 구조 덕분에 seek가 단순하고, encoder는 warm-start 옵션으로 연속 프레임 정보를 활용할 수 있습니다.” |
 | 15 | PPT Asset Export | 발표 자료 자동 생성 | `outputs/ppt_assets` 목록 | “실험 결과와 발표 이미지를 자동으로 추출하는 pipeline까지 포함했습니다.” |
 | 16 | Limitations | 현재 한계 | 한계 표 | “현재는 zip+npz container이고 motion compensation은 아직 구현 전입니다.” |
 | 17 | Future Work | keyframe/delta, binary, GPU 최적화 | roadmap | “다음 단계는 Gaussian parameter의 delta compression과 binary bitstream 설계입니다.” |
@@ -844,4 +855,3 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 - 실제 CSV 기반 RD curve 자동 생성
 - Gaussian center overlay, zoomed crop asset 생성
 - `.giv` player frame cache 및 큰 파일 최적화
-

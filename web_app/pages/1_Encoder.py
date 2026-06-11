@@ -42,6 +42,13 @@ with col_s2:
 with col_s3:
     iterations = st.number_input("가우시안 피팅 에폭 (Iterations)", min_value=10, max_value=10000, value=1000, step=100)
 
+video_init_label = st.selectbox(
+    "동영상 프레임 초기화 방식",
+    ["Independent per-frame", "Previous-frame warm start"],
+    help="Previous-frame warm start는 2번째 프레임부터 직전 프레임의 최적화된 Gaussian을 초기값으로 사용합니다.",
+)
+video_init_mode = "previous_frame" if video_init_label == "Previous-frame warm start" else "independent"
+
 encoder = GICEncoder()
 
 if input_type == "단일 이미지 업로드 (GIC)":
@@ -139,6 +146,19 @@ elif input_type == "동영상(MP4) 업로드 (GIV)":
                 temp_out_path = os.path.join(temp_out_dir, "output.giv")
                 
                 try:
+                    progress_bar = st.progress(0)
+                    progress_text = st.empty()
+
+                    def update_progress(frame_idx, total_frames, frame_info):
+                        progress_bar.progress(frame_idx / total_frames)
+                        progress_text.write(
+                            f"Frame {frame_idx}/{total_frames} | "
+                            f"Init: `{frame_info['init_source']}` | "
+                            f"PSNR: `{frame_info['psnr']:.2f} dB` | "
+                            f"SSIM: `{frame_info['ssim']:.4f}` | "
+                            f"Time: `{frame_info['encoding_time_sec']:.2f}s`"
+                        )
+
                     # Run video encoder
                     metrics = encoder.encode_video(
                         input_path=temp_vid_path,
@@ -146,15 +166,18 @@ elif input_type == "동영상(MP4) 업로드 (GIV)":
                         quality_mode=quality_mode,
                         init_method=init_method,
                         iterations=iterations,
-                        max_frames=int(max_frames)
+                        max_frames=int(max_frames),
+                        video_init_mode=video_init_mode,
+                        progress_callback=update_progress,
                     )
                     
                     st.success("🎉 **비디오 인코딩 완료!** 커스텀 가우시안 동영상 아카이브(.giv)가 생성되었습니다.")
                     st.markdown("#### 📊 비디오 평균 압축 성능 지표")
-                    col_vm1, col_vm2, col_vm3 = st.columns(3)
+                    col_vm1, col_vm2, col_vm3, col_vm4 = st.columns(4)
                     col_vm1.metric("평균 PSNR", f"{metrics['avg_psnr']:.2f} dB")
                     col_vm2.metric("평균 SSIM", f"{metrics['avg_ssim']:.4f}")
                     col_vm3.metric("평균 BPP (Bits Per Pixel)", f"{metrics['avg_bpp']:.4f}")
+                    col_vm4.metric("평균 인코딩 시간/프레임", f"{metrics.get('avg_encoding_time_sec', 0):.2f}초")
                     
                     with open(temp_out_path, "rb") as f:
                         giv_bytes = f.read()
@@ -185,21 +208,37 @@ else:
                 temp_out_path = os.path.join(temp_out_dir, "output.giv")
                 
                 try:
+                    progress_bar = st.progress(0)
+                    progress_text = st.empty()
+
+                    def update_progress(frame_idx, total_frames, frame_info):
+                        progress_bar.progress(frame_idx / total_frames)
+                        progress_text.write(
+                            f"Frame {frame_idx}/{total_frames} | "
+                            f"Init: `{frame_info['init_source']}` | "
+                            f"PSNR: `{frame_info['psnr']:.2f} dB` | "
+                            f"SSIM: `{frame_info['ssim']:.4f}` | "
+                            f"Time: `{frame_info['encoding_time_sec']:.2f}s`"
+                        )
+
                     metrics = encoder.encode_video(
                         input_path=dir_path,
                         output_path=temp_out_path,
                         quality_mode=quality_mode,
                         init_method=init_method,
                         iterations=iterations,
-                        max_frames=int(max_frames)
+                        max_frames=int(max_frames),
+                        video_init_mode=video_init_mode,
+                        progress_callback=update_progress,
                     )
                     
                     st.success("🎉 **폴더 인코딩 완료!** .giv 아카이브 생성 성공.")
                     st.markdown("#### 📊 비디오 평균 압축 성능 지표")
-                    col_vm1, col_vm2, col_vm3 = st.columns(3)
+                    col_vm1, col_vm2, col_vm3, col_vm4 = st.columns(4)
                     col_vm1.metric("평균 PSNR", f"{metrics['avg_psnr']:.2f} dB")
                     col_vm2.metric("평균 SSIM", f"{metrics['avg_ssim']:.4f}")
                     col_vm3.metric("평균 BPP", f"{metrics['avg_bpp']:.4f}")
+                    col_vm4.metric("평균 인코딩 시간/프레임", f"{metrics.get('avg_encoding_time_sec', 0):.2f}초")
                     
                     with open(temp_out_path, "rb") as f:
                         giv_bytes = f.read()

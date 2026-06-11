@@ -143,12 +143,27 @@ class GICEncoder:
 
         return metrics
 
-    def encode_video(self, input_path, output_path, quality_mode="auto", init_method="net", iterations=1000, lr=0.001, fps=None, max_frames=None):
+    def encode_video(
+        self,
+        input_path,
+        output_path,
+        quality_mode="auto",
+        init_method="net",
+        iterations=1000,
+        lr=0.001,
+        fps=None,
+        max_frames=None,
+        video_init_mode="independent",
+        progress_callback=None,
+    ):
         """
         Encode a video (directory of images or MP4 file) into a .giv compressed file.
         """
-        print(f"Encoding video: {input_path} -> {output_path} (Mode: {quality_mode})", flush=True)
+        print(f"Encoding video: {input_path} -> {output_path} (Mode: {quality_mode}, Init: {video_init_mode})", flush=True)
         start_total = time.time()
+        video_init_mode = video_init_mode.lower()
+        if video_init_mode not in {"independent", "previous_frame"}:
+            raise ValueError(f"Unknown video_init_mode: {video_init_mode}")
 
         # 1. Gather frame paths/tensors
         frames_np = []
@@ -211,9 +226,11 @@ class GICEncoder:
         previews_dict = {}
         index_frames = []
         total_fit_time = 0
+        total_decode_time = 0
         total_psnr = 0
         total_ssim = 0
         total_points = 0
+        previous_gaussians = None
 
         # 2. Loop over each frame and encode it
         for idx, original_np in enumerate(frames_np):
@@ -239,18 +256,26 @@ class GICEncoder:
 
             # Fit frame
             image_tensor = self.wrapper.image_to_tensor(original_np)
-            
-            init_points, init_time = self.wrapper.initialize_gaussians(
-                image_tensor, method=init_method, target_gaussians=num_points
-            )
+            if video_init_mode == "previous_frame" and previous_gaussians is not None:
+                init_start = time.time()
+                init_points = self.wrapper.gaussians_to_init_points(previous_gaussians)
+                init_time = time.time() - init_start
+                init_source = "previous_frame"
+            else:
+                init_points, init_time = self.wrapper.initialize_gaussians(
+                    image_tensor, method=init_method, target_gaussians=num_points
+                )
+                init_source = init_method
             
             gaussians_dict, fit_time, _ = self.wrapper.fit(
                 original_np, init_points, iterations=iterations, lr=lr
             )
-            total_fit_time += (fit_time + init_time)
+            frame_encoding_time = fit_time + init_time
+            total_fit_time += frame_encoding_time
             
             # Render for metrics
-            reconstructed_np, _ = self.wrapper.render(gaussians_dict, h, w)
+            reconstructed_np, frame_decode_time = self.wrapper.render(gaussians_dict, h, w)
+            total_decode_time += frame_decode_time
             psnr = CodecMetrics.calculate_psnr(original_np, reconstructed_np)
             ssim = CodecMetrics.calculate_ssim(original_np, reconstructed_np)
             
@@ -260,6 +285,7 @@ class GICEncoder:
             
             # Save frame parameters
             frames_dict[frame_idx] = gaussians_dict
+            previous_gaussians = gaussians_dict
             
             # Generate preview image
             preview_img = Image.fromarray(reconstructed_np).resize((128, 128))
@@ -273,10 +299,19 @@ class GICEncoder:
                 "filename": f"frames/frame_{frame_idx:06d}.npz",
                 "preview": f"previews/frame_{frame_idx:06d}.png",
                 "quality_mode": decided_mode,
+                "complexity_score": float(analysis["score"]),
+                "init_source": init_source,
                 "num_points": len(init_points),
                 "psnr": float(psnr),
-                "ssim": float(ssim)
+                "ssim": float(ssim),
+                "init_time_sec": float(init_time),
+                "fit_time_sec": float(fit_time),
+                "encoding_time_sec": float(frame_encoding_time),
+                "decoding_time_sec": float(frame_decode_time),
             })
+
+            if progress_callback is not None:
+                progress_callback(frame_idx, total_frames, index_frames[-1])
 
         # 3. Create metadata header and index
         avg_points = total_points / total_frames
@@ -297,6 +332,7 @@ class GICEncoder:
             "encoding_settings": {
                 "quality_mode": quality_mode,
                 "init_method": init_method,
+                "video_init_mode": video_init_mode,
                 "backend": self.wrapper.backend,
                 "iterations": iterations,
                 "lr": lr
@@ -334,7 +370,10 @@ class GICEncoder:
             "avg_bpp": float(bpp),
             "avg_psnr": float(avg_psnr),
             "avg_ssim": float(avg_ssim),
-            "total_encoding_time_sec": float(total_fit_time)
+            "total_encoding_time_sec": float(total_fit_time),
+            "avg_encoding_time_sec": float(total_fit_time / total_frames),
+            "total_decoding_time_sec": float(total_decode_time),
+            "avg_decoding_time_sec": float(total_decode_time / total_frames),
         }
 
         # Resave GIV with metrics populated
@@ -362,6 +401,13 @@ if __name__ == "__main__":
     parser.add_argument("--video", action="store_true", help="Flag to indicate video encoding")
     parser.add_argument("--max_frames", type=int, default=None, help="Max frames limit for video encoding")
     parser.add_argument("--fps", type=float, default=None, help="Override output GIV FPS. MP4 input FPS is used automatically when omitted.")
+    parser.add_argument(
+        "--video_init",
+        type=str,
+        default="independent",
+        choices=["independent", "previous_frame"],
+        help="Video initialization strategy. previous_frame warm-starts each frame from the previous optimized Gaussians.",
+    )
     
     args = parser.parse_args()
     
@@ -374,7 +420,8 @@ if __name__ == "__main__":
             init_method=args.init,
             iterations=args.iter,
             fps=args.fps,
-            max_frames=args.max_frames
+            max_frames=args.max_frames,
+            video_init_mode=args.video_init,
         )
     else:
         encoder.encode_image(

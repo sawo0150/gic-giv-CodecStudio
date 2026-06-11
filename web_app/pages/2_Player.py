@@ -110,10 +110,17 @@ if uploaded_codec_file is not None:
                         
                         # Show current frame parameters
                         frame_info = index["frames"][frame_idx - 1]
-                        col_fi1, col_fi2, col_fi3 = st.columns(3)
+                        col_fi1, col_fi2, col_fi3, col_fi4 = st.columns(4)
                         col_fi1.write(f"품질 모드: `{frame_info['quality_mode']}`")
                         col_fi2.write(f"가우시안 수: `{frame_info['num_points']:,}개`")
                         col_fi3.write(f"화질 (PSNR): `{frame_info['psnr']:.2f} dB`")
+                        col_fi4.write(f"SSIM: `{frame_info.get('ssim', 0):.4f}`")
+                        st.caption(
+                            f"Init: `{frame_info.get('init_source', 'unknown')}` | "
+                            f"Complexity: `{frame_info.get('complexity_score', 0):.3f}` | "
+                            f"Encode: `{frame_info.get('encoding_time_sec', 0):.3f}s` | "
+                            f"Decode: `{frame_info.get('decoding_time_sec', dec_t):.4f}s`"
+                        )
                     else:
                         st.error("프레임 데이터를 찾을 수 없습니다.")
 
@@ -137,7 +144,13 @@ if uploaded_codec_file is not None:
                         if fg is not None:
                             img, _ = decoder.wrapper.render(fg, h, w)
                             canvas.image(img, caption=f"재생 중: Frame {i}/{total_frames}", use_column_width=True)
-                            status_txt.text(f"Frame {i} - Gaussians: {index['frames'][i-1]['num_points']} | PSNR: {index['frames'][i-1]['psnr']:.2f}dB")
+                            frame_info = index['frames'][i-1]
+                            status_txt.text(
+                                f"Frame {i} - Init: {frame_info.get('init_source', 'unknown')} | "
+                                f"Gaussians: {frame_info['num_points']} | "
+                                f"PSNR: {frame_info['psnr']:.2f}dB | "
+                                f"SSIM: {frame_info.get('ssim', 0):.4f}"
+                            )
                             time.sleep(1.0 / play_fps)
                     st.success("재생이 종료되었습니다.")
 

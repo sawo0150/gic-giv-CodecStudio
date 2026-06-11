@@ -124,6 +124,39 @@ class InstantGIWrapper:
         color = np.zeros((xy.shape[0], 3), dtype=np.float32)
         return np.concatenate([xy, scale_arr, rotation, color], axis=1), low_h, low_w
 
+    def gaussians_to_init_points(self, gaussians_dict, target_gaussians=None):
+        """
+        Convert a saved Gaussian state back to the init_points layout expected by
+        GaussianImage_RS: [xy, scaling, rotation_01, rgb].
+
+        Instant-GI stores xyz and rotation as raw trainable parameters. The model
+        constructor expects activated xy in [-1, 1] and rotation in [0, 1], so
+        those fields are converted before warm-starting the next frame.
+        """
+        xyz = np.asarray(gaussians_dict["xyz"], dtype=np.float32)
+        scaling = np.asarray(gaussians_dict["scaling"], dtype=np.float32)
+        rotation = np.asarray(gaussians_dict["rotation"], dtype=np.float32)
+        color = np.asarray(gaussians_dict["features_dc"], dtype=np.float32)
+
+        if "fallback_shape" not in gaussians_dict and HAS_INSTANT_GI:
+            xy = np.tanh(xyz)
+            rotation_01 = 1.0 / (1.0 + np.exp(-rotation))
+        else:
+            xy = np.clip(xyz, -0.999, 0.999)
+            rotation_01 = np.clip(rotation, 1e-4, 1.0 - 1e-4)
+
+        xy = np.clip(xy, -0.999, 0.999)
+        rotation_01 = np.clip(rotation_01, 1e-4, 1.0 - 1e-4)
+        color = np.clip(color, 0.0, 1.0)
+
+        init_points = np.concatenate([xy, scaling, rotation_01, color], axis=1).astype(np.float32)
+
+        if target_gaussians is not None and target_gaussians > 0 and len(init_points) > target_gaussians:
+            indices = np.linspace(0, len(init_points) - 1, int(target_gaussians), dtype=np.int64)
+            init_points = init_points[indices]
+
+        return init_points
+
     def initialize_gaussians(self, image_tensor, method="net", image_path=None, target_gaussians=20000, checkpoint_path=None):
         """
         Runs the initialization phase (Network PPM, Quadtree, or Random).
