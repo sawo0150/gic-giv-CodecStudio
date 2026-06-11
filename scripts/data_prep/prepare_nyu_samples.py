@@ -144,6 +144,8 @@ def prepare_official_web_samples(num_samples):
         y0, y1 = rows[row], rows[row + 1]
         rgb = montage.crop((cols[rgb_col], y0, cols[rgb_col + 1], y1))
         depth_rgb = montage.crop((cols[depth_col], y0, cols[depth_col + 1], y1))
+        if depth_rgb.size != rgb.size:
+            depth_rgb = depth_rgb.resize(rgb.size, Image.Resampling.BILINEAR)
         depth = _depth_from_nyu_colorized(depth_rgb)
 
         name = f"{idx:03d}"
