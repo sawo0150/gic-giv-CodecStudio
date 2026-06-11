@@ -61,7 +61,7 @@ if input_type == "단일 이미지 업로드 (GIC)":
         
         col_img1, col_img2 = st.columns(2)
         with col_img1:
-            st.image(original_img, caption="입력 원본 이미지", use_column_width=True)
+            st.image(original_img, caption="입력 원본 이미지", width="stretch")
             
         # Analyze Complexity
         analyzer = ImageComplexityAnalyzer()
@@ -76,7 +76,7 @@ if input_type == "단일 이미지 업로드 (GIC)":
             st.info(f"💡 **추천 품질 모드:** `{analysis['recommended_mode']}` (가우시안 개수: `{analysis['target_gaussians']:,}개` 할당)")
             
             # Show edge map
-            st.image(analysis["edge_map"], caption="에지 디텍션 맵 (Edge Map)", use_column_width=True)
+            st.image(analysis["edge_map"], caption="에지 디텍션 맵 (Edge Map)", width="stretch")
 
         if st.button("🚀 Encode to .gic"):
             with st.spinner("Instant-GI를 사용해 가우시안 2D Representation 최적화 피팅 진행 중..."):

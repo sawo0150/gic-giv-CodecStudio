@@ -1,4 +1,3 @@
-import io
 import os
 import sys
 import tempfile
@@ -7,38 +6,34 @@ from pathlib import Path
 
 import numpy as np
 import streamlit as st
-from PIL import Image
 
-PROJECT_DIR = Path(__file__).parent.parent.parent
+PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(PROJECT_DIR))
 
+from gic_codec.depth_dataset_utils import list_demo_depth_samples, load_depth_pair
 from gic_codec.depth_gaussian import (
     load_rgb_depth,
-    rgbd_to_depth_gaussians,
     render_depth_gaussians,
+    rgbd_to_depth_gaussians,
     save_depth_gic,
     visualize_depth_colored_gaussians,
 )
-
-
-st.set_page_config(layout="wide", page_title="Depth-GIC Demo")
-st.title("Depth-GIC Demo: RGB-D to Gaussian Representation")
-
-st.write(
-    "RGB-D stores pixel-wise color and depth. Depth-GIC converts it into depth-aware "
-    "Gaussian primitives, so the same representation can be re-rendered with limited viewpoint changes."
+from gic_codec.depth_trajectory import (
+    render_depth_gic_comparison_video,
+    render_depth_gic_figure8_video,
 )
 
-rgb_file = st.file_uploader("RGB 이미지 업로드", type=["png", "jpg", "jpeg"], key="depth_gic_rgb")
-depth_file = st.file_uploader("Depth 이미지 업로드", type=["png", "jpg", "jpeg", "tif", "tiff"], key="depth_gic_depth")
 
-col_opt1, col_opt2, col_opt3 = st.columns(3)
-with col_opt1:
-    max_size = st.slider("max_size", min_value=128, max_value=768, value=384, step=32)
-with col_opt2:
-    stride = st.slider("stride", min_value=2, max_value=20, value=6, step=1)
-with col_opt3:
-    edge_weight = st.checkbox("edge_weight", value=True)
+OUTPUT_DIR = PROJECT_DIR / "outputs" / "ppt_assets" / "depth_demo"
+
+
+st.set_page_config(layout="wide", page_title="Depth-GIC Spatial Demo")
+st.title("Depth-GIC Spatial Image Demo")
+st.write(
+    "RGB-D is a pixel-wise sensor record. Depth-GIC converts it into depth-aware Gaussian primitives. "
+    "The figure-eight camera trajectory shows that the stored representation can be re-rendered with "
+    "limited viewpoint changes."
+)
 
 
 def _save_upload(uploaded, suffix):
@@ -48,36 +43,20 @@ def _save_upload(uploaded, suffix):
     return tmp.name
 
 
-def _make_builtin_rgbd(width=384, height=256):
-    x = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
-    y = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
-
-    rgb = np.zeros((height, width, 3), dtype=np.float32)
-    rgb[..., 0] = 0.15 + 0.70 * x
-    rgb[..., 1] = 0.20 + 0.65 * y
-    rgb[..., 2] = 0.35 + 0.30 * (1.0 - x)
-
-    cx, cy = 0.48, 0.52
-    circle = ((x - cx) ** 2 + (y - cy) ** 2) < 0.12
-    rgb[circle] = np.array([0.95, 0.35, 0.18], dtype=np.float32)
-
-    box = (x > 0.62) & (x < 0.86) & (y > 0.20) & (y < 0.58)
-    rgb[box] = np.array([0.18, 0.72, 0.95], dtype=np.float32)
-
-    depth = 0.25 + 0.65 * x + 0.10 * y
-    depth = np.broadcast_to(depth, (height, width)).copy()
-    depth[circle] = 0.18
-    depth[box] = 0.38
-    depth = np.clip(depth, 0.0, 1.0).astype(np.float32)
-    return rgb, depth
+def _depth_to_u8(depth):
+    return (np.clip(depth, 0.0, 1.0) * 255).astype(np.uint8)
 
 
-def _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, file_name):
+def _rgb_to_u8(rgb):
+    return (np.clip(rgb, 0.0, 1.0) * 255).astype(np.uint8) if rgb.dtype != np.uint8 else rgb
+
+
+def _build_depth_gic(rgb, depth, depth_vis, *, max_size, stride, edge_weight, file_stem, render_videos):
     start = time.time()
-    gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=edge_weight)
     height, width = depth.shape
-    render = render_depth_gaussians(gaussians, height, width)
-    depth_vis = visualize_depth_colored_gaussians(gaussians, height, width)
+    gaussians = rgbd_to_depth_gaussians(rgb, depth, stride=stride, edge_weight=edge_weight)
+    render = render_depth_gaussians(gaussians, height, width, point_scale=1.5)
+    depth_colored = visualize_depth_colored_gaussians(gaussians, height, width)
 
     header = {
         "codec_name": "GIC-D",
@@ -98,105 +77,189 @@ def _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, file_name):
         "encoding_time_sec": float(time.time() - start),
     }
 
-    buffer_path = tempfile.NamedTemporaryFile(delete=False, suffix=".gicd").name
-    save_depth_gic(buffer_path, header, gaussians, preview=render, metrics=metrics)
-    with open(buffer_path, "rb") as f:
-        gicd_bytes = f.read()
-    os.remove(buffer_path)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    gicd_path = OUTPUT_DIR / f"{file_stem}.gicd"
+    save_depth_gic(gicd_path, header, gaussians, preview=render, metrics=metrics)
 
-    st.session_state.depth_gic_demo = {
+    figure8_path = None
+    comparison_path = None
+    if render_videos:
+        figure8_path = render_depth_gic_figure8_video(
+            gaussians,
+            height,
+            width,
+            OUTPUT_DIR / "depth_gic_figure8_demo.mp4",
+            num_frames=72,
+            fps=18,
+            depth_scale=1.8,
+            point_scale=1.5,
+        )
+        comparison_path = render_depth_gic_comparison_video(
+            rgb,
+            depth_vis,
+            gaussians,
+            OUTPUT_DIR / "depth_gic_comparison_demo.mp4",
+            num_frames=72,
+            fps=18,
+        )
+
+    return {
         "rgb": rgb,
         "depth": depth,
+        "depth_vis": depth_vis,
         "gaussians": gaussians,
         "render": render,
-        "depth_vis": depth_vis,
+        "depth_colored": depth_colored,
         "header": header,
         "metrics": metrics,
-        "gicd_bytes": gicd_bytes,
-        "file_size": len(gicd_bytes),
-        "file_name": file_name,
+        "gicd_path": str(gicd_path),
+        "figure8_path": figure8_path,
+        "comparison_path": comparison_path,
     }
 
 
-if "depth_gic_demo" not in st.session_state:
-    st.session_state.depth_gic_demo = None
+def _download_button_for_file(label, path, file_name, mime):
+    if path and Path(path).exists():
+        st.download_button(label, data=Path(path).read_bytes(), file_name=file_name, mime=mime)
 
-demo_col1, demo_col2 = st.columns([1, 3])
-with demo_col1:
-    if st.button("Load built-in Depth-GIC demo"):
-        rgb, depth = _make_builtin_rgbd(width=max_size, height=max(128, int(max_size * 2 / 3)))
-        _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, "builtin_depth_demo.gicd")
-with demo_col2:
-    st.caption("파일이 없어도 바로 시연할 수 있는 synthetic RGB-D 샘플을 생성합니다.")
 
-if st.button("Encode RGB-D to Depth-GIC", disabled=rgb_file is None or depth_file is None):
-    rgb_path = depth_path = None
-    try:
-        rgb_path = _save_upload(rgb_file, Path(rgb_file.name).suffix or ".png")
-        depth_path = _save_upload(depth_file, Path(depth_file.name).suffix or ".png")
-        rgb, depth = load_rgb_depth(rgb_path, depth_path, max_size=max_size)
-        _build_depth_gic_demo(rgb, depth, max_size, stride, edge_weight, f"{Path(rgb_file.name).stem}.gicd")
-    except Exception as exc:
-        st.error(f"Depth-GIC encoding failed: {exc}")
-    finally:
-        for path in [rgb_path, depth_path]:
-            if path and os.path.exists(path):
-                os.remove(path)
+st.markdown("### Presentation-ready sample")
+dataset_label = st.selectbox("Dataset", ["DIODE", "NYU Depth V2"])
+dataset_key = "diode" if dataset_label == "DIODE" else "nyu"
+samples = list_demo_depth_samples(dataset_key)
 
-demo = st.session_state.depth_gic_demo
-if demo is None:
-    st.info("RGB 이미지와 depth map을 업로드한 뒤 Depth-GIC로 변환하세요.")
+if not samples:
+    if dataset_key == "diode":
+        st.warning("DIODE samples are missing. Run `python scripts/data_prep/prepare_diode_samples.py --num_samples 10 --cleanup` first.")
+    else:
+        st.warning("NYU samples are missing. Run `python scripts/data_prep/prepare_nyu_samples.py --source /path/to/nyu --num_samples 10` first.")
 else:
-    rgb_uint8 = (np.clip(demo["rgb"], 0.0, 1.0) * 255).astype(np.uint8)
-    depth_uint8 = (np.clip(demo["depth"], 0.0, 1.0) * 255).astype(np.uint8)
+    sample_names = [f"{idx:02d} - {record['name']}" for idx, record in enumerate(samples)]
+    sample_idx = st.selectbox("Sample", range(len(samples)), format_func=lambda idx: sample_names[idx])
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        max_size = st.slider("max_size", 128, 768, 384, 32, key="presentation_max_size")
+    with c2:
+        stride = st.slider("stride", 2, 20, 5, 1, key="presentation_stride")
+    with c3:
+        edge_weight = st.checkbox("edge_weight", value=True, key="presentation_edge_weight")
 
-    st.markdown("### Encoded RGB-D Gaussian Representation")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.image(rgb_uint8, caption="Original RGB", use_column_width=True)
-    col2.image(depth_uint8, caption="Depth Map", use_column_width=True)
-    col3.image(demo["render"], caption="Gaussian Reconstruction", use_column_width=True)
-    col4.image(demo["depth_vis"], caption="Depth-colored Gaussians", use_column_width=True)
+    if st.button("Generate Depth-GIC figure-eight video", type="primary"):
+        try:
+            record = samples[sample_idx]
+            rgb, depth, depth_vis = load_depth_pair(
+                record["rgb_path"],
+                record["depth_path"],
+                record.get("mask_path"),
+                max_size=max_size,
+            )
+            with st.spinner("Encoding Depth-GIC and rendering figure-eight MP4..."):
+                st.session_state.depth_gic_presentation = _build_depth_gic(
+                    rgb,
+                    depth,
+                    depth_vis,
+                    max_size=max_size,
+                    stride=stride,
+                    edge_weight=edge_weight,
+                    file_stem=f"{dataset_key}_{record['name']}",
+                    render_videos=True,
+                )
+        except Exception as exc:
+            st.error(f"Depth-GIC presentation demo failed: {exc}")
 
-    h, w = demo["depth"].shape
-    meta1, meta2, meta3, meta4 = st.columns(4)
-    meta1.metric("Image Size", f"{w}x{h}")
-    meta2.metric("Gaussian Count", f"{len(demo['gaussians']['xyz']):,}")
-    meta3.metric("Stride", str(demo["header"]["encoding_settings"]["stride"]))
-    meta4.metric("Estimated .gicd Size", f"{demo['file_size'] / 1024:.1f} KB")
 
-    st.json(demo["header"])
-    st.download_button(
-        "Download .gicd",
-        data=demo["gicd_bytes"],
-        file_name=demo["file_name"],
-        mime="application/octet-stream",
-    )
+presentation = st.session_state.get("depth_gic_presentation")
+if presentation:
+    st.markdown("### Generated Depth-GIC representation")
+    p1, p2, p3, p4 = st.columns(4)
+    p1.image(_rgb_to_u8(presentation["rgb"]), caption="Original RGB", width="stretch")
+    p2.image(presentation["depth_vis"], caption="Depth Map", width="stretch")
+    p3.image(presentation["render"], caption="Gaussian Render", width="stretch")
+    p4.image(presentation["depth_colored"], caption="Depth-colored Gaussians", width="stretch")
 
-    st.markdown("### Viewpoint Slider Demo")
-    vc1, vc2, vc3, vc4 = st.columns(4)
-    with vc1:
-        view_x = st.slider("view_x", -0.5, 0.5, 0.0, 0.01)
-    with vc2:
-        view_y = st.slider("view_y", -0.5, 0.5, 0.0, 0.01)
-    with vc3:
-        depth_scale = st.slider("depth_scale", 0.0, 5.0, 1.5, 0.1)
-    with vc4:
-        point_scale = st.slider("point_scale", 0.3, 3.0, 1.0, 0.1)
+    h, w = presentation["depth"].shape
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Image Size", f"{w}x{h}")
+    m2.metric("Gaussian Count", f"{len(presentation['gaussians']['xyz']):,}")
+    m3.metric("Stride", str(presentation["header"]["encoding_settings"]["stride"]))
+    m4.metric(".gicd Size", f"{Path(presentation['gicd_path']).stat().st_size / 1024:.1f} KB")
 
-    shifted = render_depth_gaussians(
-        demo["gaussians"],
-        h,
-        w,
-        view_x=view_x,
-        view_y=view_y,
-        depth_scale=depth_scale,
-        point_scale=point_scale,
-    )
+    if presentation.get("comparison_path") and Path(presentation["comparison_path"]).exists():
+        st.video(presentation["comparison_path"])
 
-    col_orig, col_shift = st.columns(2)
-    col_orig.image(
-        render_depth_gaussians(demo["gaussians"], h, w, point_scale=point_scale),
-        caption="Original View Rendering",
-        use_column_width=True,
-    )
-    col_shift.image(shifted, caption="Viewpoint-shifted Rendering", use_column_width=True)
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        _download_button_for_file("Download .gicd", presentation["gicd_path"], Path(presentation["gicd_path"]).name, "application/octet-stream")
+    with d2:
+        _download_button_for_file("Download figure-eight MP4", presentation["figure8_path"], "depth_gic_figure8_demo.mp4", "video/mp4")
+    with d3:
+        _download_button_for_file("Download comparison MP4", presentation["comparison_path"], "depth_gic_comparison_demo.mp4", "video/mp4")
+
+    with st.expander("Container metadata"):
+        st.json(presentation["header"])
+
+
+with st.expander("Interactive debug controls"):
+    st.caption("Upload one RGB image and one depth map for quick inspection without preparing a dataset.")
+    rgb_file = st.file_uploader("RGB image", type=["png", "jpg", "jpeg"], key="depth_gic_rgb_upload")
+    depth_file = st.file_uploader("Depth image", type=["png", "jpg", "jpeg", "tif", "tiff"], key="depth_gic_depth_upload")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        debug_max_size = st.slider("debug max_size", 128, 768, 384, 32)
+    with c2:
+        debug_stride = st.slider("debug stride", 2, 20, 6, 1)
+    with c3:
+        debug_edge_weight = st.checkbox("debug edge_weight", value=True)
+
+    if st.button("Encode uploaded RGB-D to Depth-GIC", disabled=rgb_file is None or depth_file is None):
+        rgb_path = depth_path = None
+        try:
+            rgb_path = _save_upload(rgb_file, Path(rgb_file.name).suffix or ".png")
+            depth_path = _save_upload(depth_file, Path(depth_file.name).suffix or ".png")
+            rgb, depth = load_rgb_depth(rgb_path, depth_path, max_size=debug_max_size)
+            st.session_state.depth_gic_debug = _build_depth_gic(
+                rgb,
+                depth,
+                _depth_to_u8(depth),
+                max_size=debug_max_size,
+                stride=debug_stride,
+                edge_weight=debug_edge_weight,
+                file_stem=Path(rgb_file.name).stem,
+                render_videos=False,
+            )
+        except Exception as exc:
+            st.error(f"Depth-GIC encoding failed: {exc}")
+        finally:
+            for path in [rgb_path, depth_path]:
+                if path and os.path.exists(path):
+                    os.remove(path)
+
+    debug = st.session_state.get("depth_gic_debug")
+    if debug:
+        h, w = debug["depth"].shape
+        vc1, vc2, vc3, vc4 = st.columns(4)
+        with vc1:
+            view_x = st.slider("view_x", -0.5, 0.5, 0.0, 0.01)
+        with vc2:
+            view_y = st.slider("view_y", -0.5, 0.5, 0.0, 0.01)
+        with vc3:
+            depth_scale = st.slider("depth_scale", 0.0, 5.0, 1.5, 0.1)
+        with vc4:
+            point_scale = st.slider("point_scale", 0.3, 3.0, 1.5, 0.1)
+
+        shifted = render_depth_gaussians(
+            debug["gaussians"],
+            h,
+            w,
+            view_x=view_x,
+            view_y=view_y,
+            depth_scale=depth_scale,
+            point_scale=point_scale,
+        )
+        q1, q2, q3, q4 = st.columns(4)
+        q1.image(_rgb_to_u8(debug["rgb"]), caption="Original RGB", width="stretch")
+        q2.image(_depth_to_u8(debug["depth"]), caption="Depth Map", width="stretch")
+        q3.image(debug["render"], caption="Original View Rendering", width="stretch")
+        q4.image(shifted, caption="Viewpoint-shifted Rendering", width="stretch")
+        _download_button_for_file("Download debug .gicd", debug["gicd_path"], Path(debug["gicd_path"]).name, "application/octet-stream")

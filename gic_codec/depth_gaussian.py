@@ -139,7 +139,7 @@ def _draw_blobs(gaussians, height, width, colors, view_x=0.0, view_y=0.0, depth_
     z = xyz[:, 2]
 
     canvas = np.ones((height, width, 3), dtype=np.float32)
-    order = np.argsort(z)[::-1]  # far first if smaller depth means closer
+    order = np.argsort(z)[::-1]  # normalized depth: larger values are farther away
 
     for idx in order:
         depth = float(z[idx])
@@ -150,31 +150,35 @@ def _draw_blobs(gaussians, height, width, colors, view_x=0.0, view_y=0.0, depth_
         if cx < -20 or cx >= width + 20 or cy < -20 or cy >= height + 20:
             continue
 
-        radius = int(max(1, round(max(scaling[idx, 0] * width, scaling[idx, 1] * height) * point_scale * 0.75)))
-        x0 = max(0, cx - radius)
-        x1 = min(width, cx + radius + 1)
-        y0 = max(0, cy - radius)
-        y1 = min(height, cy + radius + 1)
+        radius = int(max(2, round(max(scaling[idx, 0] * width, scaling[idx, 1] * height) * point_scale * 1.15)))
+        draw_radius = max(radius + 1, int(radius * 2.0))
+        x0 = max(0, cx - draw_radius)
+        x1 = min(width, cx + draw_radius + 1)
+        y0 = max(0, cy - draw_radius)
+        y1 = min(height, cy + draw_radius + 1)
         if x0 >= x1 or y0 >= y1:
             continue
 
         yy, xx = np.ogrid[y0:y1, x0:x1]
         dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
-        mask = dist2 <= radius ** 2
-        if not np.any(mask):
+        sigma = max(0.8, radius / 2.2)
+        weight = np.exp(-dist2 / (2.0 * sigma * sigma)).astype(np.float32)
+        weight[dist2 > draw_radius ** 2] = 0.0
+        if float(weight.max()) <= 0.0:
             continue
 
-        alpha = float(np.clip(opacity[idx], 0.0, 1.0)) * 0.92
+        alpha = float(np.clip(opacity[idx], 0.0, 1.0)) * 0.82
         patch = canvas[y0:y1, x0:x1]
         color = colors[idx].reshape(1, 1, 3)
-        patch[mask] = patch[mask] * (1.0 - alpha) + color * alpha
+        alpha_map = (weight[..., None] * alpha).clip(0.0, 1.0)
+        patch[:] = patch * (1.0 - alpha_map) + color * alpha_map
 
     img = Image.fromarray((np.clip(canvas, 0.0, 1.0) * 255).astype(np.uint8))
-    img = img.filter(ImageFilter.GaussianBlur(radius=max(0.0, point_scale * 0.25)))
+    img = img.filter(ImageFilter.GaussianBlur(radius=max(0.0, point_scale * 0.12)))
     return np.asarray(img).astype(np.uint8)
 
 
-def render_depth_gaussians(gaussians, height, width, view_x=0.0, view_y=0.0, depth_scale=1.0, point_scale=1.0):
+def render_depth_gaussians(gaussians, height, width, view_x=0.0, view_y=0.0, depth_scale=1.0, point_scale=1.5):
     colors = np.asarray(gaussians["features_dc"], dtype=np.float32)
     return _draw_blobs(
         gaussians,
@@ -192,7 +196,7 @@ def visualize_depth_colored_gaussians(gaussians, height, width):
     depth = np.asarray(gaussians["depth"], dtype=np.float32).reshape(-1)
     near = np.stack([1.0 - depth, 0.25 + 0.55 * (1.0 - np.abs(depth - 0.5) * 2.0), depth], axis=1)
     colors = np.clip(near, 0.0, 1.0).astype(np.float32)
-    return _draw_blobs(gaussians, int(height), int(width), colors, point_scale=1.0)
+    return _draw_blobs(gaussians, int(height), int(width), colors, point_scale=1.5)
 
 
 def _preview_bytes(preview):

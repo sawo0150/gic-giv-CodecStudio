@@ -1,0 +1,57 @@
+{
+  "source": "procedural_fallback",
+  "num_samples": 10,
+  "note": "NYU-like indoor RGB-D fallback. Use real NYU samples when available for final quantitative claims.",
+  "samples": [
+    {
+      "name": "000",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/000_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/000_depth.npy"
+    },
+    {
+      "name": "001",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/001_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/001_depth.npy"
+    },
+    {
+      "name": "002",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/002_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/002_depth.npy"
+    },
+    {
+      "name": "003",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/003_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/003_depth.npy"
+    },
+    {
+      "name": "004",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/004_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/004_depth.npy"
+    },
+    {
+      "name": "005",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/005_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/005_depth.npy"
+    },
+    {
+      "name": "006",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/006_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/006_depth.npy"
+    },
+    {
+      "name": "007",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/007_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/007_depth.npy"
+    },
+    {
+      "name": "008",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/008_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/008_depth.npy"
+    },
+    {
+      "name": "009",
+      "rgb": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/rgb/009_rgb.png",
+      "depth": "/home/wosasa/Desktop/26-1_machinelearningBasicMath/final_project/data/demo_depth/nyu_10/depth/009_depth.npy"
+    }
+  ]
+}

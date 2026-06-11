@@ -54,14 +54,14 @@ if uploaded_codec_file is not None:
                     st.json(raw_data["metrics"])
                     
                 if raw_data["preview"] is not None:
-                    st.image(raw_data["preview"], caption="저용량 썸네일 미리보기 (preview.png)", use_column_width=True)
+                    st.image(raw_data["preview"], caption="저용량 썸네일 미리보기 (preview.png)", width="stretch")
                     
             with col_right:
                 st.markdown("#### 🖼️ 실시간 가우시안 래스터라이제이션 복원 (Full Decode)")
                 if st.button("🚀 Decode & Render"):
                     with st.spinner("가우시안 파라미터 로딩 및 GPU 래스터라이제이션 렌더링 중..."):
                         dec_result = decoder.decode_image(temp_file_path)
-                        st.image(dec_result["image"], caption=f"복원 이미지 (디코딩 소요 시간: {dec_result['decoding_time']:.4f}초)", use_column_width=True)
+                        st.image(dec_result["image"], caption=f"복원 이미지 (디코딩 소요 시간: {dec_result['decoding_time']:.4f}초)", width="stretch")
                         st.success(f"성공적으로 디코딩되었습니다. 해상도: {dec_result['image'].shape[1]}x{dec_result['image'].shape[0]}")
                         
         elif suffix == ".giv":
@@ -106,7 +106,7 @@ if uploaded_codec_file is not None:
                     if frame_gaussians is not None:
                         frame_img, dec_t = decoder.wrapper.render(frame_gaussians, h, w)
                         
-                        st.image(frame_img, caption=f"Frame {frame_idx}/{total_frames} (렌더링 소요시간: {dec_t:.4f}초)", use_column_width=True)
+                        st.image(frame_img, caption=f"Frame {frame_idx}/{total_frames} (렌더링 소요시간: {dec_t:.4f}초)", width="stretch")
                         
                         # Show current frame parameters
                         frame_info = index["frames"][frame_idx - 1]
@@ -143,7 +143,7 @@ if uploaded_codec_file is not None:
                         fg = data_full["frames"].get(i)
                         if fg is not None:
                             img, _ = decoder.wrapper.render(fg, h, w)
-                            canvas.image(img, caption=f"재생 중: Frame {i}/{total_frames}", use_column_width=True)
+                            canvas.image(img, caption=f"재생 중: Frame {i}/{total_frames}", width="stretch")
                             frame_info = index['frames'][i-1]
                             status_txt.text(
                                 f"Frame {i} - Init: {frame_info.get('init_source', 'unknown')} | "

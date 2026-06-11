@@ -53,26 +53,26 @@ if output_assets_dir.exists():
     with col_c1:
         rd_curve_path = output_assets_dir / "rd_curve.png"
         if rd_curve_path.exists():
-            st.image(str(rd_curve_path), caption="Rate-Distortion Performance Curve (용량 대 화질)", use_column_width=True)
+            st.image(str(rd_curve_path), caption="Rate-Distortion Performance Curve (용량 대 화질)", width="stretch")
             
         enc_bar_path = output_assets_dir / "encoding_time_bar.png"
         if enc_bar_path.exists():
-            st.image(str(enc_bar_path), caption="Encoding Time / Complexity 비교 (로그 스케일)", use_column_width=True)
+            st.image(str(enc_bar_path), caption="Encoding Time / Complexity 비교 (로그 스케일)", width="stretch")
             
     with col_c2:
         comp_ssim_path = output_assets_dir / "comp_ratio_ssim.png"
         if comp_ssim_path.exists():
-            st.image(str(comp_ssim_path), caption="압축률 대 구조유사도 (SSIM) 이중축 비교", use_column_width=True)
+            st.image(str(comp_ssim_path), caption="압축률 대 구조유사도 (SSIM) 이중축 비교", width="stretch")
             
         dec_bar_path = output_assets_dir / "decoding_time_bar.png"
         if dec_bar_path.exists():
-            st.image(str(dec_bar_path), caption="Decoding Speed / FPS 성능 (가우시안 래스터라이제이션)", use_column_width=True)
+            st.image(str(dec_bar_path), caption="Decoding Speed / FPS 성능 (가우시안 래스터라이제이션)", width="stretch")
 
     # Frame timeline chart if exists
     timeline_path = output_assets_dir / "video_frame_psnr_timeline.png"
     if timeline_path.exists():
         st.markdown("#### 🎥 동영상 프레임 화질 추이")
-        st.image(str(timeline_path), caption="프레임 복잡도 변동에 따른 PSNR 복원 안정성", use_column_width=True)
+        st.image(str(timeline_path), caption="프레임 복잡도 변동에 따른 PSNR 복원 안정성", width="stretch")
 
     # Download button for packaged zip
     if zip_output_path.exists():

@@ -1,0 +1,6 @@
+{
+  "source": "procedural_fallback",
+  "num_frames": 18,
+  "camera": "wrist_like",
+  "note": "ManiSkill is not downloaded. This fallback approximates a wrist camera over a tabletop manipulation scene."
+}
