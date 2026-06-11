@@ -132,7 +132,7 @@ python -m gic_codec.encoder \
 MP4 to `.giv` with explicit FPS and visible progress:
 
 ```bash
-PYTHONUNBUFFERED=1 conda run -n 3dgs python -m gic_codec.encoder \
+PYTHONUNBUFFERED=1 conda run --no-capture-output -n 3dgs python -m gic_codec.encoder \
   --input "/path/to/video.mp4" \
   --video \
   --mode auto \

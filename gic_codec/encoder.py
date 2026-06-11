@@ -235,6 +235,7 @@ class GICEncoder:
         # 2. Loop over each frame and encode it
         for idx, original_np in enumerate(frames_np):
             frame_idx = idx + 1
+            frame_wall_start = time.time()
             print(f"Processing Frame {frame_idx}/{total_frames}...", flush=True)
             
             # Analyze complexity
@@ -312,6 +313,23 @@ class GICEncoder:
 
             if progress_callback is not None:
                 progress_callback(frame_idx, total_frames, index_frames[-1])
+
+            elapsed_total = time.time() - start_total
+            avg_wall_time = elapsed_total / frame_idx
+            eta_sec = avg_wall_time * (total_frames - frame_idx)
+            print(
+                f"[{frame_idx:04d}/{total_frames:04d}] "
+                f"{(frame_idx / total_frames) * 100:6.2f}% | "
+                f"init={init_source} | "
+                f"mode={decided_mode} | "
+                f"gaussians={len(init_points)} | "
+                f"PSNR={psnr:.2f}dB | "
+                f"SSIM={ssim:.4f} | "
+                f"frame_time={time.time() - frame_wall_start:.2f}s | "
+                f"elapsed={elapsed_total / 60:.1f}m | "
+                f"ETA={eta_sec / 60:.1f}m",
+                flush=True,
+            )
 
         # 3. Create metadata header and index
         avg_points = total_points / total_frames
