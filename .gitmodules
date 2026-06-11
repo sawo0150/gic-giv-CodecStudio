@@ -1,0 +1,3 @@
+[submodule "Instant-GI"]
+	path = Instant-GI
+	url = https://github.com/whoiszzj/Instant-GI.git

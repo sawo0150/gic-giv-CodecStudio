@@ -1,0 +1,12 @@
+quality_mode: auto
+thresholds:
+  low_max: 1.5
+  medium_max: 3.5
+weights:
+  edge: 50.0
+  color_variance: 0.0001
+  laplacian_variance: 0.0005
+mode_targets:
+  low: 10000
+  medium: 25000
+  high: 50000

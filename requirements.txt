@@ -1,0 +1,10 @@
+numpy
+pillow
+opencv-python
+scikit-image
+matplotlib
+pandas
+streamlit
+pyyaml
+tqdm
+gdown

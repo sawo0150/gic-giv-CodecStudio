@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Large pretrained models and checkpoints
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+pretrained/*
+!pretrained/README.md
+Instant-GI/checkpoints/
+
+# Generated codec outputs and reports
+outputs/
+*.gic
+*.giv
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Large datasets / downloaded archives
+data/div2k/
+data/DAVIS-data.zip
+data/*.zip
+data/**/*.zip
+
+# Experiment/runtime logs
+wandb/
+runs/
+logs/
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Native/CUDA build caches
+Instant-GI/submodules/**/build/
+Instant-GI/submodules/**/*.egg-info/
+Instant-GI/submodules/**/__pycache__/

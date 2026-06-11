@@ -1,0 +1,5 @@
+quality_mode: medium
+target_gaussians: 25000
+iterations: 1000
+lr: 0.001
+init_method: net
