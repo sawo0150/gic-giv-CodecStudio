@@ -49,12 +49,16 @@
 | `web_app/pages/` | Streamlit multi-page 앱 | Encoder, Player, Export Report 페이지로 기능 분리 |
 | `experiments/` | 벤치마크 및 PPT asset 생성 스크립트 | 발표용 그래프와 비교 이미지를 자동 생성 |
 | `scripts/` | 모델 준비 및 실행 보조 스크립트 | pretrained model setup, Streamlit 실행 스크립트 |
+| `scripts/data_prep/` | 발표용 RGB-D 샘플 준비 스크립트 | DIODE/NYU/ManiSkill/RLBench 전체 대형 다운로드를 피하고 작은 demo subset만 준비 |
 | `configs/` | 품질 모드 설정 YAML | Low/Medium/High/Auto 품질 정책을 별도 파일로 문서화 |
 | `pretrained/` | Instant-GI pretrained checkpoint 저장 위치 | `epoch_best_ks_3.pth` 모델 파일 관리 |
 | `data/` | 샘플 이미지/비디오 프레임 데이터 | Kodak, DIV2K, DAVIS 샘플 입력 데이터 |
+| `data/demo_depth/nyu_10/` | Depth-GIC용 NYU RGB-D 샘플 | NYU Depth V2 공식 sample montage에서 crop한 실제 실내 RGB-D 예시 |
+| `data/demo_robot_rgbd/maniskill/` | GIV-D용 robot RGB-D sequence | ManiSkill 공식 RGB+Depth texture 예시 기반 robot/tabletop sequence |
 | `outputs/gic/` | 생성된 `.gic`와 복원 이미지 | 이미지 코덱 결과 확인 |
 | `outputs/metrics/` | 실험 결과 `.gic/.giv`와 CSV | 실제 평가 수치 확인 |
 | `outputs/ppt_assets/` | 발표용 이미지/그래프 | PPT에 직접 넣을 수 있는 자료 |
+| `outputs/ppt_assets/depth_demo/` | Depth-GIC/GIV-D 발표용 PNG/MP4 | spatial image와 robot replay 시연 자료 |
 | `docs/` | 설명 문서 | PPT 제작용 구현 설명 문서 저장 |
 
 ### 주요 Python 파일 역할
@@ -68,11 +72,20 @@
 | `gic_codec/analyzer.py` | `ImageComplexityAnalyzer.calculate_complexity` | Auto Quality Mode를 위한 복잡도 계산 |
 | `gic_codec/metrics.py` | `CodecMetrics` | PSNR, SSIM, BPP, 압축률 계산 |
 | `gic_codec/instant_gi_wrapper.py` | `InstantGIWrapper` | Instant-GI 모델 호출, Gaussian fitting/rendering 추상화 |
+| `gic_codec/depth_gaussian.py` | `rgbd_to_depth_gaussians`, `render_depth_gaussians` | RGB-D를 depth-aware Gaussian primitive로 변환하고 pseudo-3D 렌더링 |
+| `gic_codec/depth_giv.py` | `save_depth_giv`, `load_depth_giv` | `.givd` depth-aware Gaussian video container 저장/로드 |
+| `gic_codec/depth_dataset_utils.py` | `load_depth_pair`, `list_demo_depth_samples`, `load_robot_rgbd_sequence` | NYU/DIODE/robot RGB-D 샘플 로딩, depth 정규화, 크기 보정 |
+| `gic_codec/depth_trajectory.py` | `render_depth_gic_figure8_video`, `render_givd_robot_comparison_video` | figure-eight spatial image video와 third-person robot replay MP4 생성 |
 | `web_app/app.py` | Streamlit main page | 시스템 상태와 페이지 소개 |
 | `web_app/pages/1_Encoder.py` | Streamlit Encoder page | 업로드/경로 입력 후 인코더 호출 |
 | `web_app/pages/2_Player.py` | Streamlit Player page | `.gic/.giv` 업로드 후 metadata 표시 및 렌더링 |
 | `web_app/pages/3_Export_Report.py` | Streamlit Export page | PPT asset 생성 및 zip 다운로드 |
+| `web_app/pages/4_Depth_GIC_Demo.py` | Streamlit Depth-GIC page | NYU/DIODE RGB-D sample을 `.gicd`로 변환하고 figure-eight MP4 생성 |
+| `web_app/pages/5_GIVD_Replay_Demo.py` | Streamlit GIV-D page | ManiSkill/RLBench RGB-D sequence를 `.givd`로 변환하고 third-person replay MP4 생성 |
 | `experiments/export_ppt_assets.py` | `export_charts` | 발표용 차트/그리드/오차맵 생성 |
+| `scripts/export_presentation_depth_demos.py` | `main` | Depth-GIC/GIV-D 발표용 PNG/MP4 일괄 생성 |
+| `scripts/data_prep/prepare_nyu_samples.py` | `prepare_official_web_samples` | NYU 공식 웹 sample montage에서 실제 RGB-D 예시 crop |
+| `scripts/data_prep/prepare_maniskill_wrist_demo.py` | `make_official_doc_sequence` | ManiSkill 공식 RGB+Depth texture 예시를 짧은 robot sequence로 변환 |
 | `scripts/setup_models.py` | `setup_models` | pretrained checkpoint 확인/다운로드/복사 |
 | `scripts/run_streamlit.sh` | shell script | 로컬 Streamlit 실행 |
 
@@ -118,6 +131,47 @@ Input Image / Video
 ### PPT용 아키텍처 설명 문장
 
 > 시스템은 입력 이미지를 먼저 복잡도 분석기로 평가하고, 그 결과에 따라 Gaussian 수와 품질 모드를 결정한다. 이후 Instant-GI backend가 이미지를 Gaussian parameter로 fitting하고, 결과 parameter는 `.gic` 또는 `.giv` zip container에 metadata와 함께 저장된다.
+
+### Depth-aware demo 확장 아키텍처
+
+기존 `.gic/.giv`는 RGB 이미지/프레임을 2D Gaussian parameter로 저장하는 codec-like system이다. 추가 구현된 Depth-GIC/GIV-D demo는 RGB-D 입력을 사용해 각 primitive에 depth를 포함시키고, 같은 표현을 제한적인 다른 시점에서 다시 렌더링하는 발표용 확장 기능이다.
+
+```text
+RGB-D Image
+→ Depth Normalization
+→ Grid Sampling
+→ Depth-aware Gaussian Primitives
+→ .gicd Container
+→ Figure-eight Pseudo Camera Render
+→ MP4 Presentation Demo
+```
+
+```text
+Robot Wrist RGB-D Sequence
+→ Frame-wise Depth Gaussian Conversion
+→ .givd Container
+→ Shifted Back-and-up Virtual View
+→ Third-person-style Replay MP4
+```
+
+| 구성 요소 | 입력 | 출력 | 역할 |
+|---|---|---|---|
+| `load_depth_pair` | RGB path, depth path, optional mask | RGB float, normalized depth, depth visualization | `.npy`, 16-bit PNG, grayscale/colorized depth를 robust하게 로드 |
+| `rgbd_to_depth_gaussians` | RGB-D array | `xyz`, `scaling`, `rotation`, `opacity`, `features_dc`, `depth` | grid sampling으로 depth-aware Gaussian primitive 생성 |
+| `render_depth_gaussians` | Gaussian dict, virtual view offset | RGB render | depth sorting과 pseudo-parallax로 limited viewpoint rendering |
+| `save_depth_gic` | header, Gaussian dict, preview, metrics | `.gicd` | depth-aware image container 저장 |
+| `save_depth_giv` | header, frame Gaussian list, previews | `.givd` | depth-aware video sequence container 저장 |
+| `depth_trajectory.py` | Gaussian primitives | H.264 MP4 | figure-eight spatial image와 robot replay video 생성 |
+
+PPT 설명 문장:
+
+> Depth-GIC/GIV-D는 RGB-D 센서 데이터를 그대로 저장하는 것이 아니라, 색상과 깊이를 가진 Gaussian primitive들의 집합으로 변환한다. 이 primitive representation은 압축 성능 검증보다 “저장된 표현을 제한적인 다른 시점에서 다시 렌더링할 수 있다”는 가능성을 보여주기 위한 확장 데모이다.
+
+주의:
+
+- `.gicd/.givd`는 기존 `.gic/.giv` 기능을 대체하지 않는다.
+- 현재 depth renderer는 full 3D reconstruction이나 occlusion-complete novel view synthesis가 아니다.
+- pseudo-parallax 시각화용 proof-of-concept이다.
 
 ---
 
@@ -573,6 +627,8 @@ from gaussianimage_rs import GaussianImage_RS
 | `1_Encoder.py` | 이미지/비디오 인코딩 | 이미지 업로드, MP4 업로드, frame folder path | `.gic` 또는 `.giv` 다운로드 |
 | `2_Player.py` | `.gic/.giv` 재생 | `.gic` 또는 `.giv` 업로드 | metadata, preview, rendered image/frame |
 | `3_Export_Report.py` | PPT asset 생성 | 버튼 클릭 | chart preview, `ppt_assets.zip` 다운로드 |
+| `4_Depth_GIC_Demo.py` | RGB-D spatial image demo | NYU/DIODE RGB-D sample 또는 업로드 RGB-D | `.gicd`, figure-eight MP4, comparison MP4 |
+| `5_GIVD_Replay_Demo.py` | Robot RGB-D replay demo | ManiSkill/RLBench RGB-D sequence | `.givd`, third-person replay MP4, comparison MP4 |
 
 ### Backend 호출 방식
 
@@ -583,6 +639,8 @@ from gaussianimage_rs import GaussianImage_RS
 | Encoder | `GICEncoder.encode_image`, `GICEncoder.encode_video` |
 | Player | `GICFormat.load`, `GIVFormat.load`, `GICDecoder.decode_image`, `decoder.wrapper.render` |
 | Export Report | `experiments.export_ppt_assets.export_charts` |
+| Depth-GIC Demo | `load_depth_pair`, `rgbd_to_depth_gaussians`, `save_depth_gic`, `render_depth_gic_comparison_video` |
+| GIV-D Replay Demo | `load_robot_rgbd_sequence`, `rgbd_to_depth_gaussians`, `save_depth_giv`, `render_givd_robot_comparison_video` |
 
 ### File upload/download 처리
 
@@ -599,6 +657,50 @@ from gaussianimage_rs import GaussianImage_RS
 ### 비교 기능을 과하게 넣지 않은 이유
 
 웹앱은 코덱 도구로서 인코딩/재생에 집중한다. JPEG/WebP 비교와 발표용 차트는 `experiments/export_ppt_assets.py` 및 CSV 결과로 분리했다.
+
+### Depth-GIC Demo page 상세
+
+`web_app/pages/4_Depth_GIC_Demo.py`는 기존 encoder/player와 별도로 RGB-D representation 확장을 보여주는 발표용 페이지이다.
+
+| UI 요소 | 역할 |
+|---|---|
+| Dataset selectbox | DIODE 또는 NYU Depth V2 선택. 현재 repository에는 NYU 공식 sample crop이 포함되어 있어 기본 시연 가능 |
+| Sample selectbox | `data/demo_depth/<dataset>/`의 RGB-D pair 선택 |
+| `max_size` slider | RGB/depth를 최대 해상도 기준으로 resize |
+| `stride` slider | primitive sampling 간격 조절. 작을수록 Gaussian 수 증가 |
+| `edge_weight` checkbox | edge 부근에서 opacity와 scale을 보정해 경계 표현 강화 |
+| `Generate Depth-GIC figure-eight video` | `.gicd` 생성, 원본/깊이/렌더 panel 표시, figure-eight MP4 생성 |
+
+표시 결과:
+
+| Panel | 설명 |
+|---|---|
+| Original RGB | NYU/DIODE RGB input |
+| Depth Map | normalized 또는 converted depth visualization |
+| Gaussian Render | depth-aware Gaussian primitive의 원래 시점 렌더링 |
+| Depth-colored Gaussians | primitive depth를 색상으로 표현한 시각화 |
+| Comparison MP4 | RGB, depth, Depth-GIC figure-eight render side-by-side |
+
+현재 포함된 NYU sample은 `nyu_depth_v2_official_web_montage` source를 가진다. 이는 NYU Depth V2 공식 웹 sample montage에서 crop한 실제 실내 장면이며, depth는 colorized depth visualization을 scalar map으로 변환한 approximate depth이다. 따라서 발표 시 “실제 NYU 예시 기반 시각화”로 설명할 수 있지만, meter 단위 depth 정확도 평가에는 사용하지 않는다.
+
+### GIV-D Replay Demo page 상세
+
+`web_app/pages/5_GIVD_Replay_Demo.py`는 robot eye-in-hand/wrist RGB-D sequence를 Gaussian primitive sequence로 변환하고, third-person-style replay MP4를 생성한다.
+
+| UI 요소 | 역할 |
+|---|---|
+| Dataset selectbox | ManiSkill wrist RGB-D 또는 RLBench eye-in-hand RGB-D 선택 |
+| `max_frames` slider | 사용할 frame 수 제한 |
+| `max_size` slider | 각 frame resize 기준 |
+| `stride` slider | frame별 primitive sampling 간격 |
+| `Generate third-person GIV-D replay` | `.givd` 생성 및 comparison MP4 생성 |
+| Interactive inspection expander | frame slider와 viewpoint slider로 개별 frame 확인 |
+
+현재 repository에는 `data/demo_robot_rgbd/maniskill/` 샘플이 포함되어 있다. 이 샘플은 ManiSkill 공식 RGB+Depth texture visualization 이미지를 기반으로 하며, crop shift를 적용해 짧은 sequence로 만든 것이다. 이전에 포함했던 RLBench procedural fallback은 발표용으로 부적절해 제거했다. RLBench는 실제 데이터가 준비되어 있지 않으면 Streamlit에서 준비 안내만 보여준다.
+
+### Streamlit video 재생 호환성
+
+Depth-GIC/GIV-D 페이지의 MP4는 `st.video(path, format="video/mp4")`로 표시한다. `gic_codec/depth_trajectory.py`의 `_save_video()`는 `imageio-ffmpeg`를 사용해 H.264 `avc1` + `yuv420p`로 저장한다. 이는 브라우저에서 `No Video with supported format and MIME type found` 오류가 발생하지 않도록 하기 위한 수정이다.
 
 ---
 
@@ -642,6 +744,50 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | Metrics summary table | `metrics_summary.json` 생성, CSV table 이미지화는 현재 미구현 |
 
 주의: export pipeline의 chart 수치 일부는 `outputs/metrics/*.csv`를 읽는 것이 아니라 코드 내부 default/mock data를 사용한다. 발표에서는 “PPT asset generator의 예시 차트”와 “실제 benchmark CSV 결과”를 구분해야 한다.
+
+### Depth-GIC/GIV-D presentation asset export
+
+Depth-aware demo용 발표 자료는 `scripts/export_presentation_depth_demos.py`가 별도로 생성한다. 이 스크립트는 CUDA나 Instant-GI를 요구하지 않고, lightweight depth Gaussian renderer만 사용한다.
+
+실행 명령어:
+
+```bash
+python scripts/export_presentation_depth_demos.py
+```
+
+출력 위치:
+
+```text
+outputs/ppt_assets/depth_demo/
+```
+
+| Export 파일 | 내용 | PPT에서 사용할 위치 |
+|---|---|---|
+| `depth_gic_original_rgb.png` | NYU 공식 sample montage에서 crop한 RGB 실내 장면 | Depth-GIC 입력 설명 |
+| `depth_gic_depth_map.png` | colorized depth에서 변환한 approximate depth map | RGB-D 입력 구조 설명 |
+| `depth_gic_gaussian_render.png` | Depth-GIC primitive render | Gaussian representation 결과 |
+| `depth_gic_depth_colored.png` | depth-colored Gaussian visualization | 각 primitive가 depth를 포함한다는 설명 |
+| `depth_gic_figure8_demo.mp4` | figure-eight camera path로 렌더링한 spatial image video | 제한적 viewpoint change 시연 |
+| `depth_gic_comparison_demo.mp4` | RGB/depth/Depth-GIC render side-by-side video | 발표 중 바로 재생할 demo |
+| `givd_robot_original_strip.png` | ManiSkill 기반 robot RGB sequence strip | robot first-person RGB-D 입력 설명 |
+| `givd_robot_depth_strip.png` | robot depth sequence strip | robot depth sequence 설명 |
+| `givd_third_person_replay.mp4` | shifted back-and-up pseudo camera replay | GIV-D 핵심 시연 |
+| `givd_comparison_demo.mp4` | wrist RGB/depth/GIV-D replay side-by-side video | 발표 중 바로 재생할 demo |
+| `demo_summary.json` | 생성 asset 경로, dataset source, frame 수, Gaussian 수 | 발표 자료 메모와 재현성 |
+
+현재 MP4 호환성 검증 결과:
+
+```text
+depth_gic_comparison_demo.mp4
+Video: h264 (High) (avc1), yuv420p, 18 fps
+
+givd_comparison_demo.mp4
+Video: h264 (High) (avc1), yuv420p, 12 fps
+```
+
+PPT 설명 문장:
+
+> 발표용 depth demo asset은 기존 성능 비교 chart와 분리했다. `export_presentation_depth_demos.py`는 RGB-D를 Gaussian primitive로 변환한 뒤, figure-eight spatial image와 robot third-person replay MP4를 자동 생성한다.
 
 ---
 
@@ -713,6 +859,33 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | JPEG/WebP/GIC의 공정한 bitrate 기준 R-D curve | TODO |
 | `.giv` frame별 실제 frame size와 encode time | TODO |
 
+### Depth-GIC/GIV-D demo 결과
+
+Depth-aware demo는 압축률/PSNR 비교 실험이 아니라 표현 확장 시연이다. 따라서 결과는 “RGB-D sample을 Gaussian primitive로 변환하고, 제한적인 viewpoint rendering MP4를 생성했는지”를 중심으로 정리한다.
+
+| Demo | Source | Output | 확인 결과 |
+|---|---|---|---|
+| Depth-GIC spatial image | NYU Depth V2 공식 web sample montage crop | `depth_gic_comparison_demo.mp4`, `.gicd` | 실제 실내 RGB/depth 기반 figure-eight render 생성 성공 |
+| GIV-D robot replay | ManiSkill 공식 RGB+Depth texture visualization 기반 sequence | `givd_comparison_demo.mp4`, `.givd` | robot/tabletop RGB-D sequence를 third-person-style replay로 생성 성공 |
+| Streamlit MP4 playback | H.264 `avc1`, `yuv420p` MP4 | `st.video(..., format="video/mp4")` | 브라우저 호환 video format으로 저장 확인 |
+
+실제 생성 asset 예:
+
+| 파일 | 현재 의미 |
+|---|---|
+| `outputs/ppt_assets/depth_demo/depth_gic_original_rgb.png` | NYU 공식 sample crop RGB |
+| `outputs/ppt_assets/depth_demo/depth_gic_depth_map.png` | approximate depth visualization |
+| `outputs/ppt_assets/depth_demo/depth_gic_gaussian_render.png` | Depth-GIC primitive render |
+| `outputs/ppt_assets/depth_demo/depth_gic_comparison_demo.mp4` | RGB/depth/render side-by-side figure-eight demo |
+| `outputs/ppt_assets/depth_demo/givd_robot_original_strip.png` | ManiSkill robot RGB sequence strip |
+| `outputs/ppt_assets/depth_demo/givd_comparison_demo.mp4` | wrist RGB/depth/third-person replay side-by-side demo |
+
+주의:
+
+- NYU depth는 공식 웹 이미지의 colorized depth visualization을 approximate scalar depth로 변환한 것이므로, meter 단위 depth 정확도 평가에는 사용하지 않는다.
+- ManiSkill sequence는 공식 RGB-D visualization 한 장을 crop shift로 sequence화한 것이므로, 실제 robot trajectory benchmark가 아니라 presentation replay sample이다.
+- 이 demo는 compression benchmark가 아니라 “RGB-D를 primitive-wise renderable representation으로 바꿀 수 있다”는 메시지를 위한 기능이다.
+
 ---
 
 ## 13. 구현 과정 설명
@@ -732,6 +905,10 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 11. Streamlit 앱 통합 | 3-page app | Torch 환경 차이 | backend 상태 표시와 fallback 안내 | 로컬 데모 가능 |
 | 12. PPT asset export | chart/grid/error map/strip 생성 | 실제 CSV와 mock chart 분리 필요 | 생성 파일명 명확화 | 발표 자료 자동화 |
 | 13. 실험 및 평가 수행 | image/video CSV와 sample container 생성 | iteration이 낮아 품질 제한 | 현재 수치와 TODO 구분 | 솔직한 한계와 개선 방향 제시 |
+| 14. Depth-GIC 확장 구현 | RGB-D를 depth-aware Gaussian primitive로 변환 | 처음에는 synthetic 도형 샘플이라 발표용으로 부족 | NYU 공식 web sample crop으로 교체 | RGB-D를 renderable primitive container로 확장 |
+| 15. GIV-D robot replay 구현 | robot RGB-D sequence를 `.givd`로 저장하고 replay MP4 생성 | 실제 ManiSkill/RLBench 전체 데이터는 너무 큼 | ManiSkill 공식 RGB+Depth 예시 기반 lightweight sequence 생성 | first-person RGB-D를 third-person-style replay로 시연 |
+| 16. MP4 호환성 수정 | Streamlit video playback용 MP4 생성 | `No Video with supported format and MIME type found` 오류 | H.264 `avc1` + `yuv420p` 저장, MIME 명시 | 발표 중 영상이 바로 재생되도록 안정화 |
+| 17. RGB/depth 크기 버그 수정 | NYU crop depth `.npy` 재생성 | RGB/depth 폭이 1px 달라 broadcast error 발생 | depth crop을 RGB 크기로 resize 후 저장 | 실제 디버깅 사례와 품질 개선 과정 |
 
 ---
 
@@ -753,6 +930,9 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | Streamlit Player page | 완료 |
 | Streamlit Export Report page | 완료 |
 | PPT asset generation | 완료 |
+| Depth-GIC `.gicd` demo | 완료 |
+| GIV-D `.givd` robot replay demo | 완료 |
+| H.264 MP4 presentation video export | 완료 |
 | 실제 장시간 고품질 benchmark | TODO |
 
 ### 장점
@@ -762,6 +942,8 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 - Streamlit GUI로 인코딩/재생 시연이 가능하다.
 - Auto Quality Mode로 입력 복잡도 기반 적응형 인코딩 흐름을 구현했다.
 - PPT asset export pipeline으로 발표 자료 제작까지 연결했다.
+- RGB-D를 depth-aware Gaussian primitive로 변환하는 확장 demo를 추가했다.
+- figure-eight spatial image와 robot third-person replay MP4로 발표 시연성이 좋아졌다.
 
 ### 한계
 
@@ -771,6 +953,8 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 - Player는 `.giv` frame을 매번 전체 로드하는 구조라 큰 파일에는 비효율적이다.
 - 일부 chart는 실제 CSV 기반이 아니라 mock/default data 기반이다.
 - 낮은 iteration 실험에서는 PSNR이 낮게 나온다.
+- Depth-GIC/GIV-D demo는 pseudo-3D parallax만 제공하며 full 3D reconstruction이 아니다.
+- 현재 포함된 NYU/ManiSkill depth demo 샘플은 발표용 lightweight sample이며 정량 depth benchmark용 데이터가 아니다.
 
 ### 향후 확장 방향
 
@@ -782,6 +966,8 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 정교한 Auto Quality Mode | saliency, texture, semantic region 기반 adaptive allocation |
 | GPU 최적화 | batch frame encoding, cached renderer, mixed precision |
 | 웹 배포 backend 분리 | Streamlit UI와 Torch inference worker 분리 |
+| Depth-aware renderer 개선 | camera intrinsics 기반 unprojection, z-buffer, hole filling |
+| 실제 RGB-D dataset 확장 | DIODE/NYU raw depth subset, real ManiSkill/RLBench generated episode 사용 |
 
 ---
 
@@ -804,9 +990,11 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 13 | Image Results | JPEG/WebP/GIC 비교 | image_results_table, `codec_grid_comparison.png` | “현재 낮은 iteration에서는 품질이 낮지만 컨테이너와 decode pipeline은 정상 작동합니다.” |
 | 14 | Video Results | GIV frame-wise 및 previous-frame warm start 결과 | `video_frames_strip.png`, frame table | “Player는 frame-wise 저장 구조 덕분에 seek가 단순하고, encoder는 warm-start 옵션으로 연속 프레임 정보를 활용할 수 있습니다.” |
 | 15 | PPT Asset Export | 발표 자료 자동 생성 | `outputs/ppt_assets` 목록 | “실험 결과와 발표 이미지를 자동으로 추출하는 pipeline까지 포함했습니다.” |
-| 16 | Limitations | 현재 한계 | 한계 표 | “현재는 zip+npz container이고 motion compensation은 아직 구현 전입니다.” |
-| 17 | Future Work | keyframe/delta, binary, GPU 최적화 | roadmap | “다음 단계는 Gaussian parameter의 delta compression과 binary bitstream 설계입니다.” |
-| 18 | Conclusion | Gaussian codec 가능성 검증 | 최종 요약 | “Instant-GI를 기반으로 인코딩, 저장, 재생, 발표 자료 생성까지 연결한 end-to-end prototype을 구현했습니다.” |
+| 16 | Depth-GIC Extension | RGB-D를 renderable primitive로 변환 | `depth_gic_comparison_demo.mp4`, `.gicd` 구조 | “RGB-D는 pixel-wise sensor data이고, Depth-GIC는 이를 primitive-wise renderable representation으로 변환합니다.” |
+| 17 | GIV-D Robot Replay | first-person RGB-D를 third-person-style replay로 시연 | `givd_comparison_demo.mp4`, robot strip | “GIV-D는 각 RGB-D frame을 depth-aware Gaussian primitive로 저장해 제한적인 다른 시점 replay를 만들 수 있습니다.” |
+| 18 | Limitations | 현재 한계 | 한계 표 | “현재는 zip+npz container이고 motion compensation은 아직 구현 전입니다. Depth demo도 full 3D reconstruction은 아닙니다.” |
+| 19 | Future Work | keyframe/delta, binary, GPU 최적화 | roadmap | “다음 단계는 Gaussian parameter의 delta compression과 binary bitstream 설계입니다.” |
+| 20 | Conclusion | Gaussian codec 가능성 검증 | 최종 요약 | “Instant-GI를 기반으로 인코딩, 저장, 재생, RGB-D 확장, 발표 자료 생성까지 연결한 end-to-end prototype을 구현했습니다.” |
 
 ---
 
@@ -824,6 +1012,10 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 6 | `outputs/ppt_assets/encoding_time_bar.png` | Encoding Complexity |
 | 7 | `outputs/ppt_assets/decoding_time_bar.png` | Decoding Speed |
 | 8 | `outputs/ppt_assets/comp_ratio_ssim.png` | Compression Ratio vs SSIM |
+| 9 | `outputs/ppt_assets/depth_demo/depth_gic_comparison_demo.mp4` | Depth-GIC Extension |
+| 10 | `outputs/ppt_assets/depth_demo/givd_comparison_demo.mp4` | GIV-D Robot Replay |
+| 11 | `outputs/ppt_assets/depth_demo/depth_gic_gaussian_render.png` | Depth-aware Gaussian Render |
+| 12 | `outputs/ppt_assets/depth_demo/givd_robot_original_strip.png` | Robot RGB-D Input |
 
 ### 우선 사용 표
 
@@ -835,6 +1027,7 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | Auto Quality metric/threshold 표 | 이 문서 8장 |
 | 실제 image results 표 | 이 문서 12장 |
 | 실제 video results 표 | 이 문서 12장 |
+| Depth-GIC/GIV-D demo 결과 표 | 이 문서 12장 |
 | 슬라이드별 구성표 | 이 문서 15장 |
 
 ### 발표에서 반드시 구분할 것
@@ -842,9 +1035,11 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 | 구분 | 설명 |
 |---|---|
 | 실제 구현 | `.gic/.giv` container, encoder/decoder, Streamlit, analyzer, export pipeline |
+| 확장 구현 | `.gicd/.givd` depth-aware demo, figure-eight render, robot replay MP4 |
 | 실제 확인 수치 | `outputs/metrics/*.csv`, 생성된 `.gic/.giv`의 `metrics.json` |
 | 설계 의도/향후 개선 | keyframe/delta compression, binary bitstream, motion compensation |
 | 예시 chart | `export_ppt_assets.py` 내부 mock/default data 기반 chart |
+| 발표용 depth sample | NYU/ManiSkill 공식 예시 기반 lightweight sample이며 정량 benchmark는 아님 |
 
 ### TODO 항목 요약
 
@@ -855,3 +1050,5 @@ PPT에 바로 넣을 수 있는 고해상도 chart와 비교 이미지를 `outpu
 - 실제 CSV 기반 RD curve 자동 생성
 - Gaussian center overlay, zoomed crop asset 생성
 - `.giv` player frame cache 및 큰 파일 최적화
+- 실제 DIODE raw depth subset 확보
+- 실제 ManiSkill/RLBench episode 기반 GIV-D replay 생성
